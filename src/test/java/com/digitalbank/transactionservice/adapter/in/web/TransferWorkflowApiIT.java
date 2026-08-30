@@ -116,4 +116,73 @@ class TransferWorkflowApiIT {
         assertThat(replay.path("transferId").asText()).isEqualTo(transferId.toString());
         assertThat(replay.path("actions")).isEmpty();
     }
+
+    @Test
+    void mapsH2KnownWorkflowIdentityConflictToConflict() throws Exception {
+        var scenarioId = UUID.randomUUID();
+        var firstTransferId = UUID.randomUUID();
+        var secondTransferId = UUID.randomUUID();
+        var sourceAccountId = UUID.randomUUID();
+        var destinationAccountId = UUID.randomUUID();
+        var correlationId = "api-correlation-conflict-" + scenarioId;
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
+                                "/internal/v1/transfer-workflows")
+                        .contentType(APPLICATION_JSON)
+                        .content(
+                                """
+                                {
+                                  "transferId": "%s",
+                                  "sourceAccountId": "%s",
+                                  "destinationAccountId": "%s",
+                                  "amount": 25.25,
+                                  "currency": "AED",
+                                  "correlationId": "%s",
+                                  "transferRequestId": "api-transfer-request-%s",
+                                  "reservationRequestId": "api-reservation-request-%s",
+                                  "postingRequestId": "api-posting-request-%s"
+                                }
+                                """
+                                        .formatted(
+                                                firstTransferId,
+                                                sourceAccountId,
+                                                destinationAccountId,
+                                                correlationId,
+                                                scenarioId,
+                                                scenarioId,
+                                                scenarioId)))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isCreated());
+
+        var conflictResponse = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
+                                "/internal/v1/transfer-workflows")
+                        .contentType(APPLICATION_JSON)
+                        .content(
+                                """
+                                {
+                                  "transferId": "%s",
+                                  "sourceAccountId": "%s",
+                                  "destinationAccountId": "%s",
+                                  "amount": 30.50,
+                                  "currency": "AED",
+                                  "correlationId": "%s",
+                                  "transferRequestId": "api-transfer-request-conflict-%s",
+                                  "reservationRequestId": "api-reservation-request-conflict-%s",
+                                  "postingRequestId": "api-posting-request-conflict-%s"
+                                }
+                                """
+                                        .formatted(
+                                                secondTransferId,
+                                                sourceAccountId,
+                                                destinationAccountId,
+                                                correlationId,
+                                                scenarioId,
+                                                scenarioId,
+                                                scenarioId)))
+                .andReturn()
+                .getResponse();
+
+        assertThat(conflictResponse.getStatus()).isEqualTo(409);
+        assertThat(objectMapper.readTree(conflictResponse.getContentAsString()).path("detail").asText())
+                .isEqualTo("Transfer workflow request conflicts with existing data");
+    }
 }

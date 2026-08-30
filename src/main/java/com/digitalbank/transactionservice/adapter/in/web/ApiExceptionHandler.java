@@ -29,6 +29,12 @@ class ApiExceptionHandler {
 
     private static final Pattern REFERENCE_CHAIN_FIELD = Pattern.compile("\\[\"([^\"]+)\"\\]");
     private static final Pattern CONSTRAINT_NAME = Pattern.compile("constraint [\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
+    private static final Pattern H2_WORKFLOW_IDENTITY_INDEX = Pattern.compile(
+            "unique index or primary key violation: \"(?:[^\".]+\\.)?"
+                    + "(?:pk_transfer_workflows|uq_transfer_workflows_"
+                    + "(?:correlation_id|transfer_request_id|reservation_request_id|posting_request_id))"
+                    + "(?:_index_[a-z0-9]+)?\\b",
+            Pattern.CASE_INSENSITIVE);
     private static final Set<String> WORKFLOW_IDENTITY_CONSTRAINTS = Set.of(
             "pk_transfer_workflows",
             "uq_transfer_workflows_correlation_id",
@@ -123,7 +129,8 @@ class ApiExceptionHandler {
     private static boolean isKnownWorkflowIdentityConflict(DataIntegrityViolationException exception) {
         var message = allMessages(exception);
         var matcher = CONSTRAINT_NAME.matcher(message);
-        return matcher.find() && WORKFLOW_IDENTITY_CONSTRAINTS.contains(matcher.group(1));
+        return (matcher.find() && WORKFLOW_IDENTITY_CONSTRAINTS.contains(matcher.group(1)))
+                || H2_WORKFLOW_IDENTITY_INDEX.matcher(message).find();
     }
 
     private static ResponseEntity<ProblemDetail> badRequestProblem(String detail, Map<String, String> error) {
