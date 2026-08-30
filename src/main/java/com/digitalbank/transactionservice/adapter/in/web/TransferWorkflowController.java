@@ -8,7 +8,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import java.net.URI;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
@@ -103,7 +102,6 @@ class TransferWorkflowController {
         if (replay) {
             builder.header("Idempotent-Replay", "true");
         }
-        return builder.location(URI.create("/internal/v1/transfer-workflows/" + response.transferId()))
-                .body(response);
+        return builder.body(response);
     }
 }

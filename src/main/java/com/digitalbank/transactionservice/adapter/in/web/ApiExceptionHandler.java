@@ -4,11 +4,13 @@ import com.digitalbank.transactionservice.domain.IllegalTransferTransitionExcept
 import com.digitalbank.transactionservice.domain.TransferConflictException;
 import jakarta.validation.ConstraintViolationException;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Map;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.ObjectError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -18,11 +20,15 @@ class ApiExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     ResponseEntity<ProblemDetail> handleValidationFailure(MethodArgumentNotValidException exception) {
-        var errors = exception.getBindingResult().getFieldErrors().stream()
+        var errors = new ArrayList<Map<String, String>>();
+        exception.getBindingResult().getFieldErrors().stream()
                 .map(error -> Map.of(
-                        "field", error.getField(),
+                        "field", normalizeField(error.getField()),
                         "message", String.valueOf(error.getDefaultMessage())))
-                .toList();
+                .forEach(errors::add);
+        exception.getBindingResult().getGlobalErrors().stream()
+                .map(ApiExceptionHandler::toGlobalError)
+                .forEach(errors::add);
 
         var problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Request validation failed");
         problem.setTitle("Invalid request");
@@ -67,5 +73,23 @@ class ApiExceptionHandler {
         problem.setTitle("Transfer workflow conflict");
         problem.setType(URI.create("https://digital-bank-java.local/problems/transfer-workflow-conflict"));
         return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
+    }
+
+    private static Map<String, String> toGlobalError(ObjectError error) {
+        return Map.of(
+                "field",
+                switch (String.valueOf(error.getCode())) {
+                    case "AssertTrue" -> "sourceAccountId,destinationAccountId";
+                    default -> "$";
+                },
+                "message",
+                String.valueOf(error.getDefaultMessage()));
+    }
+
+    private static String normalizeField(String field) {
+        return switch (field) {
+            case "distinctAccounts" -> "sourceAccountId,destinationAccountId";
+            default -> field;
+        };
     }
 }

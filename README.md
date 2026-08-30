@@ -62,7 +62,8 @@ remains the owner of immutable financial postings.
 
 The following capabilities remain outside this foundation:
 
-- HTTP transfer API and inbound adapters.
+- Additional inbound adapters beyond the internal workflow endpoint, including
+  public transfer APIs.
 - Account reservation execution and account balance projection updates.
 - Ledger posting execution and immutable ledger entry ownership.
 - Kafka producers/consumers, concrete topics, schema registry wiring, and

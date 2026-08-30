@@ -67,6 +67,7 @@ class TransferWorkflowControllerTest {
                                         .formatted(transferId, sourceAccountId, destinationAccountId)))
                 .andExpect(status().isCreated())
                 .andExpect(header().doesNotExist("Idempotent-Replay"))
+                .andExpect(header().doesNotExist("Location"))
                 .andExpect(jsonPath("$.transferId").value(transferId.toString()))
                 .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.actions[0].type").value("REQUEST_ACCOUNT_RESERVATION"))
@@ -98,6 +99,34 @@ class TransferWorkflowControllerTest {
                 .andExpect(jsonPath("$.title").value("Invalid request"))
                 .andExpect(jsonPath("$.detail").value("Request validation failed"))
                 .andExpect(jsonPath("$.errors").isArray());
+    }
+
+    @Test
+    void returnsActionableErrorForCrossFieldValidationFailure() throws Exception {
+        var accountId = UUID.randomUUID();
+
+        mockMvc.perform(post("/internal/v1/transfer-workflows")
+                        .contentType(APPLICATION_JSON)
+                        .content(
+                                """
+                                {
+                                  "transferId": "%s",
+                                  "sourceAccountId": "%s",
+                                  "destinationAccountId": "%s",
+                                  "amount": 15.75,
+                                  "currency": "AED",
+                                  "correlationId": "transfer-correlation-001",
+                                  "transferRequestId": "transfer-request-001",
+                                  "reservationRequestId": "reservation-request-001",
+                                  "postingRequestId": "posting-request-001"
+                                }
+                                """
+                                        .formatted(UUID.randomUUID(), accountId, accountId)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.errors[0].field").value("sourceAccountId,destinationAccountId"))
+                .andExpect(jsonPath("$.errors[0].message")
+                        .value("sourceAccountId and destinationAccountId must differ"));
     }
 
     @Test
