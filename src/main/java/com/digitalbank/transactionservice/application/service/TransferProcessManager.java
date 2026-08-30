@@ -22,7 +22,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+@Service
 public class TransferProcessManager {
 
     private final TransferWorkflowRepository workflowRepository;
@@ -38,6 +41,7 @@ public class TransferProcessManager {
         this.actionRepository = Objects.requireNonNull(actionRepository, "actionRepository must not be null");
     }
 
+    @Transactional
     public WorkflowResult requestTransfer(RequestTransferCommand command) {
         var existing = workflowRepository.findById(command.transferId());
         if (existing.isPresent()) {
@@ -61,18 +65,22 @@ public class TransferProcessManager {
         return result(transfer, record(action));
     }
 
+    @Transactional
     public WorkflowResult handle(AccountReservationCreated event) {
         return handle(WorkflowEventRecord.from(event));
     }
 
+    @Transactional
     public WorkflowResult handle(AccountReservationRejected event) {
         return handle(WorkflowEventRecord.from(event));
     }
 
+    @Transactional
     public WorkflowResult handle(LedgerPostingCompleted event) {
         return handle(WorkflowEventRecord.from(event));
     }
 
+    @Transactional
     public WorkflowResult handle(LedgerPostingFailed event) {
         return handle(WorkflowEventRecord.from(event));
     }

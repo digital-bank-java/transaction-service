@@ -279,6 +279,11 @@ class TransferProcessManagerTest {
             return true;
         }
 
+        @Override
+        public long countByTransferId(UUID transferId) {
+            return values.stream().filter(action -> action.transferId().equals(transferId)).count();
+        }
+
         List<WorkflowAction> actions() {
             return values;
         }
