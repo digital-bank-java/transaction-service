@@ -15,13 +15,16 @@ The current implementation owns only:
 - Actuator health and Kubernetes probe endpoints.
 - Maven, Docker, and Helm delivery foundations.
 - A framework-free transfer lifecycle model with deterministic state transitions.
+- An internal-only HTTP endpoint for transfer workflow requests and idempotent
+  replays.
 - Transfer saga/process-manager application boundary and workflow state.
 - PostgreSQL persistence for transfer workflows, inbox records, and actions.
 
 It must not implement public transfer endpoints, direct account balance or
 ledger-entry mutation, Kafka producers or consumers, concrete topic/schema
-wiring, or transport adapters in this foundation. Account Service owns account
-reservations and projections; Ledger Service owns immutable postings.
+wiring, account reservation transport, ledger transport, or gateway routing in
+this foundation. Account Service owns account reservations and projections;
+Ledger Service owns immutable postings.
 
 ## Architecture And Naming
 
@@ -35,7 +38,9 @@ reservations and projections; Ledger Service owns immutable postings.
 Follow the platform's hexagonal architecture. Domain and application rules
 must stay independent of controllers, Helm templates, Kafka, and database
 entities. The process manager coordinates through input messages and output
-action/repository ports.
+action/repository ports. The internal HTTP adapter at
+`/internal/v1/transfer-workflows` is for workflow orchestration only and is not
+a customer-facing balance mutation API.
 
 ## Local Commands
 
