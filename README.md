@@ -1,12 +1,44 @@
 # Transaction Service
 
-Transaction Service is the future owner of transfer orchestration and the
-internal transfer saga/process-manager foundation for the Digital Bank Java
-platform.
+Transaction Service is the Digital Bank Java platform bootstrap for the future
+transfer orchestration and internal transfer saga/process-manager boundary.
 
-This bootstrap deliberately contains no transfer endpoint, account
-reservation call, ledger posting, Kafka transport, PostgreSQL persistence, or
-saga orchestration. Those behaviors belong to later implementation tasks.
+## Implemented State
+
+The current repository provides a deployable Spring Boot service foundation:
+
+- Runs on Java 21 with service name `transaction-service`.
+- Loads runtime configuration from Spring Cloud Config Server.
+- Exposes Actuator health, liveness, and readiness endpoints.
+- Builds a non-root container image and deploys through a hardened Helm chart.
+- Supports the `8084` service port supplied by runtime configuration.
+
+There are no transfer APIs or transaction side effects in this bootstrap.
+
+## Planned Transfer And Saga Behavior
+
+The following capabilities are planned and are not implemented here:
+
+- Transfer commands and transfer orchestration.
+- Account reservation coordination.
+- Ledger posting or balance mutation.
+- Kafka producers, consumers, topics, or event contracts owned by this service.
+- PostgreSQL persistence and saga state management.
+
+Do not document or add an endpoint, integration, topic, database, or gateway
+route for these capabilities until the corresponding work is approved and
+tracked.
+
+## Responsibilities And Boundaries
+
+Current responsibilities are limited to the service bootstrap, runtime health,
+configuration-client integration, packaging, and deployment foundation.
+
+The service does not currently own customer data, account data, ledger entries,
+transfer execution, Kafka infrastructure, persistence, or secrets. The
+configuration repository is a separate repository owned by the Config Server
+workflow; this repository only consumes configuration exposed for
+`transaction-service`.
 
 ## Runtime Configuration
 
@@ -21,6 +53,23 @@ effective runtime configuration, including the application port.
 Config Server must expose the `transaction-service` configuration. Do not
 commit secrets or environment-specific credentials to this repository, image,
 or Helm values.
+
+## Environments
+
+The platform has three formal runtime environments:
+
+| Profile | Purpose |
+| --- | --- |
+| `sit` | Integrated development and testing in the local or hosted SIT platform. |
+| `uat` | User acceptance testing. |
+| `prod` | Production. |
+
+SIT is the supported lowest environment for this bootstrap. A workstation JVM
+used for debugging connects to forwarded SIT dependencies and uses SIT
+configuration; it is not a fourth `local` environment or deployment profile.
+The same application artifact is intended to be promoted through `sit`, `uat`,
+and `prod` without rebuilding. Environment-specific configuration and secrets
+remain outside this repository.
 
 ## Prerequisites
 
@@ -40,6 +89,25 @@ helm version --short
 kubectl config current-context
 ```
 
+## Workstation Debugging Against SIT
+
+Workstation debugging is a temporary JVM process against SIT, not a separate
+environment. Use the shared [workstation debugging procedure](https://github.com/digital-bank-java/.github/blob/main/docs/workstation-debugging-against-sit.md)
+for the required port forwards, temporary overrides, and cleanup steps.
+
+After the documented SIT dependencies and overrides are available, start the
+service with:
+
+```bash
+./mvnw spring-boot:run
+```
+
+Verify the local process on the configured service port:
+
+```bash
+curl --fail http://localhost:8084/actuator/health
+```
+
 ## Build And Test
 
 Run unit-phase tests:
@@ -48,15 +116,64 @@ Run unit-phase tests:
 ./mvnw --batch-mode --no-transfer-progress test
 ```
 
-Run the complete Maven lifecycle, including the random-port health
-integration test:
+Run integration tests and package verification after the unit phase:
 
 ```bash
-./mvnw --batch-mode --no-transfer-progress verify
+./mvnw --batch-mode --no-transfer-progress verify -DskipUnitTests=true
 ```
 
 The automated test context disables Config Client so it does not require a
 running Config Server.
+
+## CI Validation
+
+The repository CI workflow runs these stages in order:
+
+1. Unit-test stage:
+
+   ```bash
+   ./mvnw --batch-mode --no-transfer-progress test
+   ```
+
+2. Integration and package verification stage:
+
+   ```bash
+   ./mvnw --batch-mode --no-transfer-progress verify -DskipUnitTests=true
+   ```
+
+3. Helm validation stage:
+
+   ```bash
+   helm lint helm --strict --values helm/values-sit.yaml
+
+   helm template transaction-service helm \
+     --namespace digital-bank-sit \
+     --values helm/values-sit.yaml \
+     --set image.tag="${GITHUB_SHA}" \
+     > rendered.yaml
+   test -s rendered.yaml
+   ```
+
+4. Container build and smoke stage: build
+   `digital-bank-java/transaction-service:ci`, verify its configured user is
+   `10001:10001`, run it against a disposable mock Config Server with a
+   read-only root filesystem and writable `/tmp`, then poll:
+
+   ```bash
+   docker run --detach \
+     --name transaction-service-ci \
+     --read-only \
+     --tmpfs /tmp:rw,size=64m \
+     --publish 8084:8084 \
+     --add-host host.docker.internal:host-gateway \
+     --env CONFIG_SERVER_URL=http://host.docker.internal:8888 \
+     digital-bank-java/transaction-service:ci
+
+   curl --fail http://localhost:8084/actuator/health
+   ```
+
+Third-party GitHub Actions are pinned to immutable commit SHAs. The CI mock
+Config Server supplies only the non-sensitive `server.port` setting.
 
 ## Run With Docker
 
@@ -129,7 +246,7 @@ The chart deploys one internal `ClusterIP` service with a read-only root
 filesystem, non-root security context, no privilege escalation, no Linux
 capabilities, and an `emptyDir` mount for `/tmp`.
 
-## Development Boundaries
+## Planned Scope
 
 Keep business workflows out of the bootstrap boundary. Future work may add
 transfer commands, account reservation coordination, ledger posting events,
@@ -137,6 +254,18 @@ Kafka consumers/producers, persistence, and saga state management. Until
 those tasks are approved, this repository should remain a deployable health
 and configuration foundation.
 
-CI runs Maven verification, strict Helm lint/render validation, and a
-container smoke test using a small mock Config Server that supplies port
-`8084`.
+## Contribution Workflow
+
+Every change must have a tracked issue, a dedicated branch, and a non-draft
+pull request. Do not commit directly to `main`.
+
+1. Create or identify the tracked issue describing the change.
+2. Create a dedicated branch from the current base branch, using the issue in
+   the branch name where practical.
+3. Implement the scoped change and run the documented CI commands locally.
+4. Open a non-draft pull request that links the tracked issue, for example
+   with `Closes #<issue-number>` when the issue is in this repository.
+5. Wait for required reviewers and all CI stages before merging.
+
+See the organization [README standard](https://github.com/digital-bank-java/.github/blob/main/docs/readme-standard.md)
+and [platform conventions](https://github.com/digital-bank-java/.github/blob/main/docs/platform-conventions.md).
