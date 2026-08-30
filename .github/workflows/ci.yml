@@ -14,8 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
-    name: Maven verification
+  test:
+    name: Maven test phases
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -30,8 +30,11 @@ jobs:
           java-version: "21"
           cache: maven
 
-      - name: Run Maven verification
-        run: ./mvnw --batch-mode --no-transfer-progress verify
+      - name: Run unit tests
+        run: ./mvnw --batch-mode --no-transfer-progress test
+
+      - name: Run integration and package verification
+        run: ./mvnw --batch-mode --no-transfer-progress verify -DskipUnitTests=true
 
   helm:
     name: Helm validation
@@ -62,7 +65,7 @@ jobs:
   container:
     name: Container build and smoke test
     needs:
-      - verify
+      - test
       - helm
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -148,6 +151,8 @@ jobs:
 
           docker run --detach \
             --name transaction-service-ci \
+            --read-only \
+            --tmpfs /tmp:rw,size=64m \
             --publish 8084:8084 \
             --add-host host.docker.internal:host-gateway \
             --env CONFIG_SERVER_URL=http://host.docker.internal:8888 \
