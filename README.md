@@ -68,8 +68,9 @@ SIT is the supported lowest environment for this bootstrap. A workstation JVM
 used for debugging connects to forwarded SIT dependencies and uses SIT
 configuration; it is not a fourth `local` environment or deployment profile.
 The same application artifact is intended to be promoted through `sit`, `uat`,
-and `prod` without rebuilding. Environment-specific configuration and secrets
-remain outside this repository.
+and `prod` without rebuilding. UAT and PROD are intended for AWS-hosted
+deployment. Their runtime configuration and secrets are delivered by the
+platform deployment mechanism and are not committed to this repository.
 
 ## Prerequisites
 
@@ -127,7 +128,9 @@ running Config Server.
 
 ## CI Validation
 
-The repository CI workflow runs these stages in order:
+The repository CI workflow runs the Maven test job and Helm validation job in
+parallel. The container build and smoke-test job waits for both jobs to pass.
+The workflow includes these checks:
 
 1. Unit-test stage:
 
