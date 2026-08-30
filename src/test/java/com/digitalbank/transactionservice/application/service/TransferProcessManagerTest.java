@@ -154,6 +154,18 @@ class TransferProcessManagerTest {
     }
 
     @Test
+    void usesAtomicWorkflowCreationBeforeReadingAnExistingRequest() {
+        var repository = new AtomicCreationOnlyWorkflowRepository();
+        var manager = new TransferProcessManager(repository, events, actions);
+
+        var result = manager.requestTransfer(command());
+
+        assertThat(result.transfer().id()).isEqualTo(TRANSFER_ID);
+        assertThat(result.actions()).hasSize(1);
+        assertThat(repository.createIfAbsentCalled).isTrue();
+    }
+
+    @Test
     void duplicateReservationEventWithNewEventIdDoesNotRepeatLedgerAction() {
         reserve();
 
@@ -221,6 +233,27 @@ class TransferProcessManagerTest {
         public Transfer save(Transfer transfer) {
             values.put(transfer.id(), transfer);
             return transfer;
+        }
+    }
+
+    private static final class AtomicCreationOnlyWorkflowRepository implements TransferWorkflowRepository {
+
+        private boolean createIfAbsentCalled;
+
+        @Override
+        public Optional<Transfer> findById(UUID transferId) {
+            throw new AssertionError("requestTransfer must use atomic creation before lookup");
+        }
+
+        @Override
+        public boolean createIfAbsent(Transfer transfer) {
+            createIfAbsentCalled = true;
+            return true;
+        }
+
+        @Override
+        public Transfer save(Transfer transfer) {
+            throw new AssertionError("requestTransfer must not save the initial workflow twice");
         }
     }
 

@@ -43,12 +43,6 @@ public class TransferProcessManager {
 
     @Transactional
     public WorkflowResult requestTransfer(RequestTransferCommand command) {
-        var existing = workflowRepository.findById(command.transferId());
-        if (existing.isPresent()) {
-            assertSameRequest(existing.orElseThrow(), command);
-            return result(existing.orElseThrow());
-        }
-
         var transfer = Transfer.request(
                 command.transferId(),
                 command.sourceAccountId(),
@@ -59,7 +53,13 @@ public class TransferProcessManager {
                 command.transferRequestId(),
                 command.reservationRequestId(),
                 command.postingRequestId());
-        workflowRepository.save(transfer);
+
+        if (!workflowRepository.createIfAbsent(transfer)) {
+            var existing = workflowRepository.findById(command.transferId())
+                    .orElseThrow(() -> new IllegalStateException("Workflow creation was not observable: " + command.transferId()));
+            assertSameRequest(existing, command);
+            return result(existing);
+        }
 
         var action = RequestAccountReservation.forTransfer(transfer);
         return result(transfer, record(action));

@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.MethodParameter;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.BeanPropertyBindingResult;
 import org.springframework.validation.FieldError;
@@ -34,6 +35,25 @@ class ApiExceptionHandlerTest {
         assertThat(errors).containsExactly(
                 Map.of("field", "currency", "message", "must contain exactly 3 letters"),
                 Map.of("field", "$", "message", "sourceAccountId and destinationAccountId must differ"));
+    }
+
+    @Test
+    void mapsKnownWorkflowIdentityConstraintToConflict() {
+        var exception = new DataIntegrityViolationException(
+                "duplicate key value violates unique constraint \"uq_transfer_workflows_transfer_request_id\"");
+
+        var response = handler.handleDataIntegrityViolation(exception);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(response.getBody().getDetail()).isEqualTo("Transfer workflow request conflicts with existing data");
+    }
+
+    @Test
+    void mapsUnexpectedDatabaseFailureToInternalServerError() {
+        var response = handler.handleDataIntegrityViolation(new DataIntegrityViolationException("database unavailable"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getBody().getDetail()).isEqualTo("The request could not be completed");
     }
 
     private static MethodParameter requestParameter() throws NoSuchMethodException {

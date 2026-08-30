@@ -9,6 +9,7 @@ import jakarta.validation.ConstraintViolationException;
 import java.net.URI;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Set;
 import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -27,6 +28,13 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 class ApiExceptionHandler {
 
     private static final Pattern REFERENCE_CHAIN_FIELD = Pattern.compile("\\[\"([^\"]+)\"\\]");
+    private static final Pattern CONSTRAINT_NAME = Pattern.compile("constraint [\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
+    private static final Set<String> WORKFLOW_IDENTITY_CONSTRAINTS = Set.of(
+            "pk_transfer_workflows",
+            "uq_transfer_workflows_correlation_id",
+            "uq_transfer_workflows_transfer_request_id",
+            "uq_transfer_workflows_reservation_request_id",
+            "uq_transfer_workflows_posting_request_id");
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     ResponseEntity<ProblemDetail> handleValidationFailure(MethodArgumentNotValidException exception) {
@@ -86,17 +94,36 @@ class ApiExceptionHandler {
 
     @ExceptionHandler({
         TransferConflictException.class,
-        IllegalTransferTransitionException.class,
-        DataIntegrityViolationException.class
+        IllegalTransferTransitionException.class
     })
     ResponseEntity<ProblemDetail> handleWorkflowConflict(RuntimeException exception) {
-        var detail = exception instanceof DataIntegrityViolationException
-                ? "Transfer workflow request conflicts with existing data"
-                : exception.getMessage();
-        var problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, detail);
+        var problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
         problem.setTitle("Transfer workflow conflict");
         problem.setType(URI.create("https://digital-bank-java.local/problems/transfer-workflow-conflict"));
         return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    ResponseEntity<ProblemDetail> handleDataIntegrityViolation(DataIntegrityViolationException exception) {
+        if (isKnownWorkflowIdentityConflict(exception)) {
+            var problem = ProblemDetail.forStatusAndDetail(
+                    HttpStatus.CONFLICT, "Transfer workflow request conflicts with existing data");
+            problem.setTitle("Transfer workflow conflict");
+            problem.setType(URI.create("https://digital-bank-java.local/problems/transfer-workflow-conflict"));
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
+        }
+
+        var problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.INTERNAL_SERVER_ERROR, "The request could not be completed");
+        problem.setTitle("Internal server error");
+        problem.setType(URI.create("https://digital-bank-java.local/problems/internal-error"));
+        return ResponseEntity.internalServerError().body(problem);
+    }
+
+    private static boolean isKnownWorkflowIdentityConflict(DataIntegrityViolationException exception) {
+        var message = allMessages(exception);
+        var matcher = CONSTRAINT_NAME.matcher(message);
+        return matcher.find() && WORKFLOW_IDENTITY_CONSTRAINTS.contains(matcher.group(1));
     }
 
     private static ResponseEntity<ProblemDetail> badRequestProblem(String detail, Map<String, String> error) {

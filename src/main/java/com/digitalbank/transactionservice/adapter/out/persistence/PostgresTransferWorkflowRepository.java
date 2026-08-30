@@ -6,20 +6,47 @@ import jakarta.persistence.OptimisticLockException;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+import javax.sql.DataSource;
 import org.springframework.stereotype.Repository;
 
 @Repository
 class PostgresTransferWorkflowRepository implements TransferWorkflowRepository {
 
     private final SpringDataTransferWorkflowRepository repository;
+    private final boolean h2;
 
-    PostgresTransferWorkflowRepository(SpringDataTransferWorkflowRepository repository) {
+    PostgresTransferWorkflowRepository(SpringDataTransferWorkflowRepository repository, DataSource dataSource) {
         this.repository = repository;
+        this.h2 = databaseIsH2(dataSource);
     }
 
     @Override
     public Optional<Transfer> findById(UUID transferId) {
         return repository.findById(transferId).map(TransferWorkflowJpaMapper::toDomain);
+    }
+
+    @Override
+    public boolean createIfAbsent(Transfer transfer) {
+        var created = (h2 ? repository.createIfAbsentH2(
+                        transfer.id(),
+                        transfer.sourceAccountId(),
+                        transfer.destinationAccountId(),
+                        transfer.amount(),
+                        transfer.currency(),
+                        transfer.correlationId(),
+                        transfer.transferRequestId(),
+                        transfer.reservationRequestId(),
+                        transfer.postingRequestId()) : repository.createIfAbsent(
+                        transfer.id(),
+                        transfer.sourceAccountId(),
+                        transfer.destinationAccountId(),
+                        transfer.amount(),
+                        transfer.currency(),
+                        transfer.correlationId(),
+                        transfer.transferRequestId(),
+                        transfer.reservationRequestId(),
+                        transfer.postingRequestId()));
+        return created == 1;
     }
 
     @Override
@@ -36,5 +63,13 @@ class PostgresTransferWorkflowRepository implements TransferWorkflowRepository {
         }
         entity.updateFrom(transfer, Instant.now());
         return TransferWorkflowJpaMapper.toDomain(repository.saveAndFlush(entity));
+    }
+
+    private static boolean databaseIsH2(DataSource dataSource) {
+        try (var connection = dataSource.getConnection()) {
+            return "H2".equalsIgnoreCase(connection.getMetaData().getDatabaseProductName());
+        } catch (java.sql.SQLException exception) {
+            throw new IllegalStateException("Could not determine database product", exception);
+        }
     }
 }
