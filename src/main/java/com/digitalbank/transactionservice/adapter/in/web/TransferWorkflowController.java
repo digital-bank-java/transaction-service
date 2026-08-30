@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -66,9 +67,10 @@ class TransferWorkflowController {
     }
 
     @PostMapping("/internal/v1/transfer-workflows")
+    @SecurityRequirement(name = "bearer-jwt")
     @Operation(
             summary = "Request an internal transfer workflow",
-            description = "Internal workflow-only endpoint. This starts or replays transfer orchestration state and is not a public customer-facing balance mutation API. Authentication and authorization for internal callers are not implemented in this slice and remain follow-up work for platform boundary controls.")
+            description = "Internal workflow-only endpoint. This starts or replays transfer orchestration state and is not a public customer-facing balance mutation API. Requires a bearer JWT with the transfer.internal scope and an allowlisted subject configured by the platform.")
     @ApiResponse(
             responseCode = "201",
             description = "Transfer workflow created",
@@ -113,6 +115,8 @@ class TransferWorkflowController {
                                             name = "workflow-conflict",
                                             summary = "Workflow conflict",
                                             value = CONFLICT_PROBLEM_EXAMPLE)))
+    @ApiResponse(responseCode = "401", description = "Bearer authentication is required")
+    @ApiResponse(responseCode = "403", description = "The authenticated subject is not authorized for transfer workflows")
     ResponseEntity<TransferWorkflowResponse> requestTransferWorkflow(
             @Valid @RequestBody InternalTransferWorkflowRequest request) {
         var result = processManager.requestTransfer(request.toCommand());
