@@ -35,6 +35,21 @@ class TransferWorkflowController {
             }
             """;
 
+    private static final String MALFORMED_JSON_PROBLEM_EXAMPLE = """
+            {
+              "type": "https://digital-bank-java.local/problems/validation-error",
+              "title": "Invalid request",
+              "status": 400,
+              "detail": "Malformed JSON request",
+              "errors": [
+                {
+                  "field": "transferId",
+                  "message": "must be a valid UUID"
+                }
+              ]
+            }
+            """;
+
     private static final String CONFLICT_PROBLEM_EXAMPLE = """
             {
               "type": "https://digital-bank-java.local/problems/transfer-workflow-conflict",
@@ -53,7 +68,7 @@ class TransferWorkflowController {
     @PostMapping("/internal/v1/transfer-workflows")
     @Operation(
             summary = "Request an internal transfer workflow",
-            description = "Internal workflow-only endpoint. This starts or replays transfer orchestration state and is not a public customer-facing balance mutation API.")
+            description = "Internal workflow-only endpoint. This starts or replays transfer orchestration state and is not a public customer-facing balance mutation API. Authentication and authorization for internal callers are not implemented in this slice and remain follow-up work for platform boundary controls.")
     @ApiResponse(
             responseCode = "201",
             description = "Transfer workflow created",
@@ -70,16 +85,22 @@ class TransferWorkflowController {
                             schema = @Schema(implementation = TransferWorkflowResponse.class)))
     @ApiResponse(
             responseCode = "400",
-            description = "Invalid workflow request",
+            description = "Invalid workflow request or malformed JSON payload",
             content =
                     @Content(
                             mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
                             schema = @Schema(implementation = ProblemDetail.class),
                             examples =
-                                    @ExampleObject(
-                                            name = "validation-error",
-                                            summary = "Validation failure",
-                                            value = VALIDATION_PROBLEM_EXAMPLE)))
+                                    {
+                                        @ExampleObject(
+                                                name = "validation-error",
+                                                summary = "Validation failure",
+                                                value = VALIDATION_PROBLEM_EXAMPLE),
+                                        @ExampleObject(
+                                                name = "malformed-json",
+                                                summary = "Malformed JSON payload",
+                                                value = MALFORMED_JSON_PROBLEM_EXAMPLE)
+                                    }))
     @ApiResponse(
             responseCode = "409",
             description = "Workflow request conflicts with existing transfer state",

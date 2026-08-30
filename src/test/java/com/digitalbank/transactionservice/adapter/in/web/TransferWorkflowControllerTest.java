@@ -102,6 +102,68 @@ class TransferWorkflowControllerTest {
     }
 
     @Test
+    void rejectsAmountWithMoreThanFourFractionDigits() throws Exception {
+        mockMvc.perform(post("/internal/v1/transfer-workflows")
+                        .contentType(APPLICATION_JSON)
+                        .content(
+                                """
+                                {
+                                  "transferId": "%s",
+                                  "sourceAccountId": "%s",
+                                  "destinationAccountId": "%s",
+                                  "amount": 15.12345,
+                                  "currency": "AED",
+                                  "correlationId": "transfer-correlation-001",
+                                  "transferRequestId": "transfer-request-001",
+                                  "reservationRequestId": "reservation-request-001",
+                                  "postingRequestId": "posting-request-001"
+                                }
+                                """
+                                        .formatted(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID())))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.detail").value("Request validation failed"))
+                .andExpect(jsonPath("$.errors[0].field").value("amount"));
+    }
+
+    @Test
+    void rejectsRequestIdentifiersLongerThanPersistenceBoundary() throws Exception {
+        var tooLong = "x".repeat(101);
+
+        mockMvc.perform(post("/internal/v1/transfer-workflows")
+                        .contentType(APPLICATION_JSON)
+                        .content(
+                                """
+                                {
+                                  "transferId": "%s",
+                                  "sourceAccountId": "%s",
+                                  "destinationAccountId": "%s",
+                                  "amount": 15.75,
+                                  "currency": "AED",
+                                  "correlationId": "%s",
+                                  "transferRequestId": "%s",
+                                  "reservationRequestId": "%s",
+                                  "postingRequestId": "%s"
+                                }
+                                """
+                                        .formatted(
+                                                UUID.randomUUID(),
+                                                UUID.randomUUID(),
+                                                UUID.randomUUID(),
+                                                tooLong,
+                                                tooLong,
+                                                tooLong,
+                                                tooLong)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.detail").value("Request validation failed"))
+                .andExpect(jsonPath("$.errors[?(@.field == 'correlationId')]").isNotEmpty())
+                .andExpect(jsonPath("$.errors[?(@.field == 'transferRequestId')]").isNotEmpty())
+                .andExpect(jsonPath("$.errors[?(@.field == 'reservationRequestId')]").isNotEmpty())
+                .andExpect(jsonPath("$.errors[?(@.field == 'postingRequestId')]").isNotEmpty());
+    }
+
+    @Test
     void returnsActionableErrorForCrossFieldValidationFailure() throws Exception {
         var accountId = UUID.randomUUID();
 
@@ -127,6 +189,46 @@ class TransferWorkflowControllerTest {
                 .andExpect(jsonPath("$.errors[0].field").value("sourceAccountId,destinationAccountId"))
                 .andExpect(jsonPath("$.errors[0].message")
                         .value("sourceAccountId and destinationAccountId must differ"));
+    }
+
+    @Test
+    void returnsProblemDetailsForInvalidJsonFieldTypes() throws Exception {
+        mockMvc.perform(post("/internal/v1/transfer-workflows")
+                        .contentType(APPLICATION_JSON)
+                        .content(
+                                """
+                                {
+                                  "transferId": "not-a-uuid",
+                                  "sourceAccountId": "%s",
+                                  "destinationAccountId": "%s",
+                                  "amount": 15.75,
+                                  "currency": "AED",
+                                  "correlationId": "transfer-correlation-001",
+                                  "transferRequestId": "transfer-request-001",
+                                  "reservationRequestId": "reservation-request-001",
+                                  "postingRequestId": "posting-request-001"
+                                }
+                                """
+                                        .formatted(UUID.randomUUID(), UUID.randomUUID())))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.type").value("https://digital-bank-java.local/problems/validation-error"))
+                .andExpect(jsonPath("$.title").value("Invalid request"))
+                .andExpect(jsonPath("$.detail").value("Malformed JSON request"))
+                .andExpect(jsonPath("$.errors[0].field").value("transferId"));
+    }
+
+    @Test
+    void returnsProblemDetailsForMalformedJsonSyntax() throws Exception {
+        mockMvc.perform(post("/internal/v1/transfer-workflows")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"transferId\":"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.type").value("https://digital-bank-java.local/problems/validation-error"))
+                .andExpect(jsonPath("$.title").value("Invalid request"))
+                .andExpect(jsonPath("$.detail").value("Malformed JSON request"))
+                .andExpect(jsonPath("$.errors[0].field").value("$"));
     }
 
     @Test

@@ -53,6 +53,12 @@ adapters may map these messages to governed platform contracts, including
 `AccountReservationCreated`, `LedgerPostingCompleted`, and
 `LedgerPostingFailed`.
 
+This repository does not yet implement authentication or authorization for
+internal callers of `POST /internal/v1/transfer-workflows`. Until dedicated
+security work is tracked and delivered, access to this endpoint must be
+constrained by platform boundary controls such as private networking, gateway
+policy, or service-to-service enforcement outside this service.
+
 The PostgreSQL schema contains `transfer_workflows`,
 `transfer_workflow_events`, and `transfer_workflow_actions`. Account Service
 remains the owner of reservations and account projections; Ledger Service
