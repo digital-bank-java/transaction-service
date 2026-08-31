@@ -19,33 +19,20 @@ class PostgresWorkflowActionRepository implements WorkflowActionRepository {
 
     @Override
     public boolean recordIfAbsent(WorkflowAction action) {
-        var values = WorkflowActionJpaEntity.values(action);
-        var recorded = (h2 ? repository.recordIfAbsentH2(
-                        values.actionId(),
-                        values.transferId(),
-                        values.actionType(),
-                        values.correlationId(),
-                        values.sourceAccountId(),
-                        values.destinationAccountId(),
-                        values.amount(),
-                        values.currency(),
-                        values.requestId(),
-                        values.reservationRequestId(),
-                        values.postingRequestId(),
-                        values.reservationId()) : repository.recordIfAbsent(
-                        values.actionId(),
-                        values.transferId(),
-                        values.actionType(),
-                        values.correlationId(),
-                        values.sourceAccountId(),
-                        values.destinationAccountId(),
-                        values.amount(),
-                        values.currency(),
-                        values.requestId(),
-                        values.reservationRequestId(),
-                        values.postingRequestId(),
-                        values.reservationId()));
-        return recorded == 1;
+        var entity = new WorkflowActionJpaEntity(action);
+        return repository.insertIfAbsent(
+                entity.actionId(),
+                entity.transferId(),
+                entity.actionType(),
+                entity.correlationId(),
+                entity.sourceAccountId(),
+                entity.destinationAccountId(),
+                entity.amount(),
+                entity.currency(),
+                entity.requestId(),
+                entity.reservationRequestId(),
+                entity.postingRequestId(),
+                entity.reservationId()) == 1;
     }
 
     @Override

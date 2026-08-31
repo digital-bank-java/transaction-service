@@ -26,27 +26,22 @@ class PostgresTransferWorkflowRepository implements TransferWorkflowRepository {
     }
 
     @Override
-    public boolean createIfAbsent(Transfer transfer) {
-        var created = (h2 ? repository.createIfAbsentH2(
-                        transfer.id(),
-                        transfer.sourceAccountId(),
-                        transfer.destinationAccountId(),
-                        transfer.amount(),
-                        transfer.currency(),
-                        transfer.correlationId(),
-                        transfer.transferRequestId(),
-                        transfer.reservationRequestId(),
-                        transfer.postingRequestId()) : repository.createIfAbsent(
-                        transfer.id(),
-                        transfer.sourceAccountId(),
-                        transfer.destinationAccountId(),
-                        transfer.amount(),
-                        transfer.currency(),
-                        transfer.correlationId(),
-                        transfer.transferRequestId(),
-                        transfer.reservationRequestId(),
-                        transfer.postingRequestId()));
-        return created == 1;
+    public Transfer saveIfAbsent(Transfer transfer) {
+        repository.insertIfAbsent(
+                transfer.id(),
+                transfer.sourceAccountId(),
+                transfer.destinationAccountId(),
+                transfer.amount(),
+                transfer.currency(),
+                transfer.correlationId(),
+                transfer.transferRequestId(),
+                transfer.reservationRequestId(),
+                transfer.postingRequestId(),
+                transfer.reservationId(),
+                transfer.status().name(),
+                transfer.version());
+        return findById(transfer.id())
+                .orElseThrow(() -> new IllegalStateException("Transfer workflow was not persisted: " + transfer.id()));
     }
 
     @Override

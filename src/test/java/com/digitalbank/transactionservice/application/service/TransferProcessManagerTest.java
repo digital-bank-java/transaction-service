@@ -252,6 +252,11 @@ class TransferProcessManagerTest {
         }
 
         @Override
+        public synchronized Transfer saveIfAbsent(Transfer transfer) {
+            return values.computeIfAbsent(transfer.id(), ignored -> transfer);
+        }
+
+        @Override
         public Transfer save(Transfer transfer) {
             values.put(transfer.id(), transfer);
             return transfer;

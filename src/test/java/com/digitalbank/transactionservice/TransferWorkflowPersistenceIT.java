@@ -9,10 +9,16 @@ import com.digitalbank.transactionservice.application.port.in.RequestTransferCom
 import com.digitalbank.transactionservice.application.port.out.TransferWorkflowRepository;
 import com.digitalbank.transactionservice.application.port.out.WorkflowEventInbox;
 import com.digitalbank.transactionservice.application.service.TransferProcessManager;
+import com.digitalbank.transactionservice.application.service.WorkflowResult;
 import com.digitalbank.transactionservice.domain.TransferStatus;
 import jakarta.persistence.OptimisticLockException;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -78,6 +84,28 @@ class TransferWorkflowPersistenceIT {
     }
 
     @Test
+    void concurrentDuplicateTransferRequestsPersistOneWorkflowAndAction() throws Exception {
+        var start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            List<Future<WorkflowResult>> requests =
+                    List.of(
+                            executor.submit(() -> requestAfter(start)),
+                            executor.submit(() -> requestAfter(start)));
+            start.countDown();
+
+            var results = List.of(requests.get(0).get(), requests.get(1).get());
+
+            assertThat(results).allSatisfy(result -> assertThat(result.transfer().id()).isEqualTo(transferId));
+            assertThat(results.stream().mapToInt(result -> result.actions().size()).sum()).isEqualTo(1);
+            assertThat(countByPrimaryKey("transfer_workflows", transferId)).isEqualTo(1);
+            assertThat(count("transfer_workflow_actions", transferId)).isEqualTo(1);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
     void persistsDeferredEventAndReplaysItAfterReservation() {
         processManager.requestTransfer(command());
         processManager.handle(new LedgerPostingCompleted(
@@ -126,8 +154,19 @@ class TransferWorkflowPersistenceIT {
                 postingRequestId);
     }
 
+    private WorkflowResult requestAfter(CountDownLatch start)
+            throws InterruptedException {
+        start.await();
+        return processManager.requestTransfer(command());
+    }
+
     private int count(String table, UUID id) {
         return jdbcTemplate.queryForObject(
                 "select count(*) from " + table + " where transfer_id = ?", Integer.class, id);
+    }
+
+    private int countByPrimaryKey(String table, UUID id) {
+        return jdbcTemplate.queryForObject(
+                "select count(*) from " + table + " where id = ?", Integer.class, id);
     }
 }
