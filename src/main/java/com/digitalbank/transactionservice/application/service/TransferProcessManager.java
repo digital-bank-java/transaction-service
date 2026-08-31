@@ -21,6 +21,7 @@ import com.digitalbank.transactionservice.domain.TransferStatus;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -63,6 +64,12 @@ public class TransferProcessManager {
 
         var action = RequestAccountReservation.forTransfer(transfer);
         return result(transfer, record(action));
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<WorkflowResult> findTransferWorkflow(UUID transferId) {
+        Objects.requireNonNull(transferId, "transferId must not be null");
+        return workflowRepository.findById(transferId).map(TransferProcessManager::result);
     }
 
     @Transactional

@@ -72,6 +72,28 @@ class TransferProcessManagerTest {
     }
 
     @Test
+    void findsExistingTransferWorkflowWithoutCreatingActions() {
+        processManager.requestTransfer(command());
+
+        var found = processManager.findTransferWorkflow(TRANSFER_ID);
+
+        assertThat(found).hasValueSatisfying(result -> {
+            assertThat(result.transfer().id()).isEqualTo(TRANSFER_ID);
+            assertThat(result.transfer().status()).isEqualTo(TransferStatus.PENDING);
+            assertThat(result.actions()).isEmpty();
+        });
+        assertThat(actions.actions()).hasSize(1);
+    }
+
+    @Test
+    void returnsEmptyWhenTransferWorkflowIsNotFound() {
+        var found = processManager.findTransferWorkflow(TRANSFER_ID);
+
+        assertThat(found).isEmpty();
+        assertThat(actions.actions()).isEmpty();
+    }
+
+    @Test
     void conflictingTransferRequestIsRejected() {
         processManager.requestTransfer(command());
 

@@ -9,10 +9,13 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -57,6 +60,30 @@ class TransferWorkflowController {
               "title": "Transfer workflow conflict",
               "status": 409,
               "detail": "transfer request conflicts with existing workflow"
+            }
+            """;
+
+    private static final String INVALID_TRANSFER_ID_PROBLEM_EXAMPLE = """
+            {
+              "type": "https://digital-bank-java.local/problems/validation-error",
+              "title": "Invalid request",
+              "status": 400,
+              "detail": "Request validation failed",
+              "errors": [
+                {
+                  "field": "transferId",
+                  "message": "must be a valid UUID"
+                }
+              ]
+            }
+            """;
+
+    private static final String NOT_FOUND_PROBLEM_EXAMPLE = """
+            {
+              "type": "https://digital-bank-java.local/problems/transfer-workflow-not-found",
+              "title": "Transfer workflow not found",
+              "status": 404,
+              "detail": "Transfer workflow not found: 11111111-1111-1111-1111-111111111111"
             }
             """;
 
@@ -128,5 +155,47 @@ class TransferWorkflowController {
             builder.header("Idempotent-Replay", "true");
         }
         return builder.body(response);
+    }
+
+    @GetMapping("/internal/v1/transfer-workflows/{transferId}")
+    @Operation(
+            summary = "Get an internal transfer workflow",
+            description = "Internal workflow-only endpoint. This retrieves existing transfer orchestration state by transfer ID and does not mutate account balances or ledger postings.")
+    @ApiResponse(
+            responseCode = "200",
+            description = "Transfer workflow found",
+            content =
+                    @Content(
+                            mediaType = MediaType.APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = TransferWorkflowResponse.class)))
+    @ApiResponse(
+            responseCode = "400",
+            description = "Invalid transfer ID",
+            content =
+                    @Content(
+                            mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                            schema = @Schema(implementation = ProblemDetail.class),
+                            examples =
+                                    @ExampleObject(
+                                            name = "invalid-transfer-id",
+                                            summary = "Invalid transfer ID",
+                                            value = INVALID_TRANSFER_ID_PROBLEM_EXAMPLE)))
+    @ApiResponse(
+            responseCode = "404",
+            description = "Transfer workflow not found",
+            content =
+                    @Content(
+                            mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                            schema = @Schema(implementation = ProblemDetail.class),
+                            examples =
+                                    @ExampleObject(
+                                            name = "workflow-not-found",
+                                            summary = "Workflow not found",
+                                            value = NOT_FOUND_PROBLEM_EXAMPLE)))
+    ResponseEntity<TransferWorkflowResponse> getTransferWorkflow(@PathVariable UUID transferId) {
+        return processManager.findTransferWorkflow(transferId)
+                .map(TransferWorkflowResponse::from)
+                .map(ResponseEntity::ok)
+                .orElseThrow(() -> new TransferWorkflowNotFoundException(transferId));
     }
 }

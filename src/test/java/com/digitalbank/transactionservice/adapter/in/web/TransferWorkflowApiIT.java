@@ -2,10 +2,16 @@ package com.digitalbank.transactionservice.adapter.in.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.digitalbank.transactionservice.TestSecurityConfig;
 import com.digitalbank.transactionservice.application.port.out.TransferWorkflowRepository;
+import com.digitalbank.transactionservice.domain.Transfer;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.math.BigDecimal;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,6 +19,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
@@ -269,5 +276,40 @@ class TransferWorkflowApiIT {
                 transferId,
                 transferId,
                 transferId);
+    }
+
+    @Test
+    @Transactional
+    void getsPersistedTransferWorkflowThroughHttp() throws Exception {
+        var transferId = UUID.randomUUID();
+        var sourceAccountId = UUID.randomUUID();
+        var destinationAccountId = UUID.randomUUID();
+        var transfer = Transfer.request(
+                transferId,
+                sourceAccountId,
+                destinationAccountId,
+                new BigDecimal("42.50"),
+                "AED",
+                "repository-lookup-correlation",
+                "repository-lookup-transfer-request",
+                "repository-lookup-reservation-request",
+                "repository-lookup-posting-request");
+
+        assertThat(workflowRepository.createIfAbsent(transfer)).isTrue();
+
+        mockMvc.perform(get("/internal/v1/transfer-workflows/{transferId}", transferId))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(APPLICATION_JSON))
+                .andExpect(jsonPath("$.transferId").value(transferId.toString()))
+                .andExpect(jsonPath("$.sourceAccountId").value(sourceAccountId.toString()))
+                .andExpect(jsonPath("$.destinationAccountId").value(destinationAccountId.toString()))
+                .andExpect(jsonPath("$.amount").value(42.50))
+                .andExpect(jsonPath("$.currency").value("AED"))
+                .andExpect(jsonPath("$.correlationId").value("repository-lookup-correlation"))
+                .andExpect(jsonPath("$.transferRequestId").value("repository-lookup-transfer-request"))
+                .andExpect(jsonPath("$.reservationRequestId").value("repository-lookup-reservation-request"))
+                .andExpect(jsonPath("$.postingRequestId").value("repository-lookup-posting-request"))
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.actions").isEmpty());
     }
 }

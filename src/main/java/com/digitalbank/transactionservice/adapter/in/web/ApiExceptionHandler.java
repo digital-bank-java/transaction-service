@@ -98,6 +98,14 @@ class ApiExceptionHandler {
         return ResponseEntity.badRequest().body(problem);
     }
 
+    @ExceptionHandler(TransferWorkflowNotFoundException.class)
+    ResponseEntity<ProblemDetail> handleTransferWorkflowNotFound(TransferWorkflowNotFoundException exception) {
+        var problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+        problem.setTitle("Transfer workflow not found");
+        problem.setType(URI.create("https://digital-bank-java.local/problems/transfer-workflow-not-found"));
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(problem);
+    }
+
     @ExceptionHandler({
         TransferConflictException.class,
         IllegalTransferTransitionException.class
