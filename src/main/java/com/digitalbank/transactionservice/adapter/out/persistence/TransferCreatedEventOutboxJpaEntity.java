@@ -83,6 +83,12 @@ class TransferCreatedEventOutboxJpaEntity {
     @Column(name = "last_error", length = 2000)
     private String lastError;
 
+    @Column(name = "processing_token")
+    private UUID processingToken;
+
+    @Column(name = "processing_until")
+    private Instant processingUntil;
+
     @Column(name = "json_payload", nullable = false, columnDefinition = "text")
     private String jsonPayload;
 

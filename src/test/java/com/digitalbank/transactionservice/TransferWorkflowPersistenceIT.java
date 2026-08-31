@@ -7,6 +7,8 @@ import com.digitalbank.transactionservice.application.port.in.AccountReservation
 import com.digitalbank.transactionservice.application.port.in.LedgerPostingCompleted;
 import com.digitalbank.transactionservice.application.port.in.RequestTransferCommand;
 import com.digitalbank.transactionservice.application.port.out.TransferWorkflowRepository;
+import com.digitalbank.transactionservice.application.port.out.TransferCreatedEvent;
+import com.digitalbank.transactionservice.application.port.out.TransferCreatedEventOutbox;
 import com.digitalbank.transactionservice.application.port.out.WorkflowEventInbox;
 import com.digitalbank.transactionservice.application.service.TransferProcessManager;
 import com.digitalbank.transactionservice.application.service.WorkflowResult;
@@ -19,6 +21,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,6 +59,9 @@ class TransferWorkflowPersistenceIT {
 
     @Autowired
     private WorkflowEventInbox eventInbox;
+
+    @Autowired
+    private TransferCreatedEventOutbox transferCreatedEventOutbox;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -114,6 +120,26 @@ class TransferWorkflowPersistenceIT {
     }
 
     @Test
+    void concurrentOutboxClaimsDeliverAnEventToOnlyOneWorker() throws Exception {
+        processManager.requestTransfer(command());
+        var start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            List<Future<List<TransferCreatedEvent>>> claims = List.of(
+                    executor.submit(() -> claimAfter(start)),
+                    executor.submit(() -> claimAfter(start)));
+            start.countDown();
+
+            var claimed = List.of(claims.get(0).get(), claims.get(1).get());
+
+            assertThat(claimed.stream().mapToInt(List::size).sum()).isEqualTo(1);
+            assertThat(claimed.stream().filter(events -> !events.isEmpty())).hasSize(1);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
     void persistsDeferredEventAndReplaysItAfterReservation() {
         processManager.requestTransfer(command());
         processManager.handle(new LedgerPostingCompleted(
@@ -166,6 +192,13 @@ class TransferWorkflowPersistenceIT {
             throws InterruptedException {
         start.await();
         return processManager.requestTransfer(command());
+    }
+
+    private List<TransferCreatedEvent> claimAfter(CountDownLatch start)
+            throws InterruptedException {
+        start.await();
+        return transferCreatedEventOutbox.claimReady(
+                1, Instant.now(), UUID.randomUUID(), Instant.now().plusSeconds(60));
     }
 
     private int count(String table, UUID id) {

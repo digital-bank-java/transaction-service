@@ -14,6 +14,130 @@ interface SpringDataTransferCreatedEventOutboxRepository
     List<TransferCreatedEventOutboxJpaEntity> findTop100ByEventStatusInAndAvailableAtLessThanEqualOrderByCreatedAtAsc(
             List<TransferCreatedOutboxStatus> statuses, Instant now);
 
+    List<TransferCreatedEventOutboxJpaEntity> findByProcessingTokenOrderByCreatedAtAsc(UUID processingToken);
+
+    @Modifying(flushAutomatically = true)
+    @Query(value = """
+            with claim_lock as materialized (
+                select pg_try_advisory_xact_lock(
+                        hashtextextended('transaction-service.transfer-created-event-outbox', 0)) as acquired
+            ), candidates as (
+                select outbox.event_id
+                from transfer_created_event_outbox outbox
+                cross join claim_lock
+                where event_status in ('PENDING', 'FAILED')
+                  and claim_lock.acquired
+                  and available_at <= :now
+                  and (processing_until is null or processing_until <= :now)
+                order by outbox.created_at, outbox.event_id
+                for update skip locked
+                limit :limit
+            )
+            update transfer_created_event_outbox outbox
+               set processing_token = :claimToken,
+                   processing_until = :leaseUntil
+             where outbox.event_id in (select event_id from candidates)
+               and outbox.event_status in ('PENDING', 'FAILED')
+               and outbox.available_at <= :now
+               and (outbox.processing_until is null or outbox.processing_until <= :now)
+            """, nativeQuery = true)
+    int claimReadyPostgres(
+            @Param("limit") int limit,
+            @Param("now") Instant now,
+            @Param("claimToken") UUID claimToken,
+            @Param("leaseUntil") Instant leaseUntil);
+
+    @Modifying(flushAutomatically = true)
+    @Query("""
+            update TransferCreatedEventOutboxJpaEntity outbox
+               set outbox.processingToken = :claimToken,
+                   outbox.processingUntil = :leaseUntil
+             where outbox.eventId = :eventId
+               and outbox.eventStatus in :statuses
+               and outbox.availableAt <= :now
+               and (outbox.processingUntil is null or outbox.processingUntil <= :now)
+            """)
+    int claimReadyH2(
+            @Param("eventId") UUID eventId,
+            @Param("statuses") List<TransferCreatedOutboxStatus> statuses,
+            @Param("now") Instant now,
+            @Param("claimToken") UUID claimToken,
+            @Param("leaseUntil") Instant leaseUntil);
+
+    @Modifying(flushAutomatically = true)
+    @Query(value = """
+            update transfer_created_event_outbox
+               set event_status = 'PUBLISHED',
+                   published_at = :publishedAt,
+                   last_error = null,
+                   processing_token = null,
+                   processing_until = null
+             where event_id = :eventId
+               and event_status in ('PENDING', 'FAILED')
+               and processing_token = :claimToken
+            """, nativeQuery = true)
+    int markPublishedPostgres(
+            @Param("eventId") UUID eventId,
+            @Param("claimToken") UUID claimToken,
+            @Param("publishedAt") Instant publishedAt);
+
+    @Modifying(flushAutomatically = true)
+    @Query("""
+            update TransferCreatedEventOutboxJpaEntity outbox
+               set outbox.eventStatus = com.digitalbank.transactionservice.adapter.out.persistence.TransferCreatedOutboxStatus.PUBLISHED,
+                   outbox.publishedAt = :publishedAt,
+                   outbox.lastError = null,
+                   outbox.processingToken = null,
+                   outbox.processingUntil = null
+             where outbox.eventId = :eventId
+               and outbox.eventStatus in :statuses
+               and outbox.processingToken = :claimToken
+            """)
+    int markPublishedH2(
+            @Param("eventId") UUID eventId,
+            @Param("claimToken") UUID claimToken,
+            @Param("statuses") List<TransferCreatedOutboxStatus> statuses,
+            @Param("publishedAt") Instant publishedAt);
+
+    @Modifying(flushAutomatically = true)
+    @Query(value = """
+            update transfer_created_event_outbox
+               set event_status = 'FAILED',
+                   attempt_count = attempt_count + 1,
+                   available_at = :retryAt,
+                   last_error = :error,
+                   processing_token = null,
+                   processing_until = null
+             where event_id = :eventId
+               and event_status in ('PENDING', 'FAILED')
+               and processing_token = :claimToken
+            """, nativeQuery = true)
+    int markFailedPostgres(
+            @Param("eventId") UUID eventId,
+            @Param("claimToken") UUID claimToken,
+            @Param("error") String error,
+            @Param("retryAt") Instant retryAt);
+
+    @Modifying(flushAutomatically = true)
+    @Query("""
+            update TransferCreatedEventOutboxJpaEntity outbox
+               set outbox.eventStatus = com.digitalbank.transactionservice.adapter.out.persistence.TransferCreatedOutboxStatus.FAILED,
+                   outbox.attemptCount = outbox.attemptCount + 1,
+                   outbox.availableAt = :retryAt,
+                   outbox.lastError = :error,
+                   outbox.processingToken = null,
+                   outbox.processingUntil = null
+             where outbox.eventId = :eventId
+               and outbox.eventStatus in :statuses
+               and outbox.processingToken = :claimToken
+            """)
+    int markFailedH2(
+            @Param("eventId") UUID eventId,
+            @Param("claimToken") UUID claimToken,
+            @Param("statuses") List<TransferCreatedOutboxStatus> statuses,
+            @Param("error") String error,
+            @Param("retryAt") Instant retryAt);
+
     @Modifying(flushAutomatically = true)
     @Query(value = """
             insert into transfer_created_event_outbox (

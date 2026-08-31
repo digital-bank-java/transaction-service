@@ -6,7 +6,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import javax.sql.DataSource;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -56,19 +58,45 @@ class PostgresTransferCreatedEventOutbox implements TransferCreatedEventOutbox {
     }
 
     @Override
-    public void markPublished(TransferCreatedEvent event, Instant publishedAt) {
-        repository.findById(event.eventId()).ifPresent(entity -> {
-            entity.markPublished(publishedAt);
-            repository.saveAndFlush(entity);
-        });
+    @Transactional
+    public List<TransferCreatedEvent> claimReady(
+            int limit, Instant now, UUID claimToken, Instant leaseUntil) {
+        if (h2) {
+            var statuses = List.of(TransferCreatedOutboxStatus.PENDING, TransferCreatedOutboxStatus.FAILED);
+            repository.findTop100ByEventStatusInAndAvailableAtLessThanEqualOrderByCreatedAtAsc(statuses, now)
+                    .stream()
+                    .limit(limit)
+                    .forEach(entity -> repository.claimReadyH2(
+                            entity.eventId(), statuses, now, claimToken, leaseUntil));
+        } else {
+            repository.claimReadyPostgres(limit, now, claimToken, leaseUntil);
+        }
+        return repository.findByProcessingTokenOrderByCreatedAtAsc(claimToken)
+                .stream()
+                .map(this::readEvent)
+                .toList();
     }
 
     @Override
-    public void markFailed(TransferCreatedEvent event, String error, Instant retryAt) {
-        repository.findById(event.eventId()).ifPresent(entity -> {
-            entity.markFailed(error, retryAt);
-            repository.saveAndFlush(entity);
-        });
+    @Transactional
+    public void markPublished(TransferCreatedEvent event, UUID claimToken, Instant publishedAt) {
+        var statuses = List.of(TransferCreatedOutboxStatus.PENDING, TransferCreatedOutboxStatus.FAILED);
+        if (h2) {
+            repository.markPublishedH2(event.eventId(), claimToken, statuses, publishedAt);
+        } else {
+            repository.markPublishedPostgres(event.eventId(), claimToken, publishedAt);
+        }
+    }
+
+    @Override
+    @Transactional
+    public void markFailed(TransferCreatedEvent event, UUID claimToken, String error, Instant retryAt) {
+        var statuses = List.of(TransferCreatedOutboxStatus.PENDING, TransferCreatedOutboxStatus.FAILED);
+        if (h2) {
+            repository.markFailedH2(event.eventId(), claimToken, statuses, error, retryAt);
+        } else {
+            repository.markFailedPostgres(event.eventId(), claimToken, error, retryAt);
+        }
     }
 
     private EventValues eventValues(TransferCreatedEvent event, Instant now) {
