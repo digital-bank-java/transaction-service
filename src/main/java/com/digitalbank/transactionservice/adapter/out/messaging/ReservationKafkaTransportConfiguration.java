@@ -108,16 +108,23 @@ class ReservationKafkaTransportConfiguration {
     }
 
     private static String required(Environment environment, String suffix) {
-        var value = environment.getRequiredProperty("transaction.events.reservation.kafka." + suffix);
-        if (value.isBlank()) {
+        var value = environment.getProperty("transaction.events.reservation.kafka." + suffix);
+        if (value == null || value.isBlank()) {
+            value = environment.getProperty("spring.kafka." + suffix);
+        }
+        if (value == null || value.isBlank()) {
             throw new IllegalStateException("Missing Kafka reservation " + suffix);
         }
         return value;
     }
 
     private static String protocol(Environment environment) {
-        return environment.getProperty("transaction.events.reservation.security.protocol", "SSL")
-                .trim()
+        var value = environment.getProperty("transaction.events.reservation.security.protocol");
+        if (value == null || value.isBlank()) {
+            value = environment.getProperty("spring.kafka.properties[security.protocol]",
+                    environment.getProperty("spring.kafka.properties.security.protocol", "SASL_SSL"));
+        }
+        return value.trim()
                 .toUpperCase(java.util.Locale.ROOT);
     }
 }

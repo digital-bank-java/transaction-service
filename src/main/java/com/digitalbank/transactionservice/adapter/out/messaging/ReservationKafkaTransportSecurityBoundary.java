@@ -8,9 +8,12 @@ final class ReservationKafkaTransportSecurityBoundary {
     ReservationKafkaTransportSecurityBoundary() {}
 
     static void validate(Environment environment) {
-        var protocol = environment
-                .getProperty("transaction.events.reservation.security.protocol", "SSL")
-                .trim()
+        var protocol = environment.getProperty("transaction.events.reservation.security.protocol");
+        if (protocol == null || protocol.isBlank()) {
+            protocol = environment.getProperty("spring.kafka.properties[security.protocol]",
+                    environment.getProperty("spring.kafka.properties.security.protocol", "SASL_SSL"));
+        }
+        protocol = protocol.trim()
                 .toUpperCase(java.util.Locale.ROOT);
         if (!switch (protocol) {
             case "SSL", "SASL_SSL" -> true;
