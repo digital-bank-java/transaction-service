@@ -54,16 +54,11 @@ public class TransferProcessManager {
                 command.transferRequestId(),
                 command.reservationRequestId(),
                 command.postingRequestId());
+        var persisted = workflowRepository.saveIfAbsent(transfer);
+        assertSameRequest(persisted, command);
 
-        if (!workflowRepository.createIfAbsent(transfer)) {
-            var existing = workflowRepository.findById(command.transferId())
-                    .orElseThrow(() -> new IllegalStateException("Workflow creation was not observable: " + command.transferId()));
-            assertSameRequest(existing, command);
-            return result(existing);
-        }
-
-        var action = RequestAccountReservation.forTransfer(transfer);
-        return result(transfer, record(action));
+        var action = RequestAccountReservation.forTransfer(persisted);
+        return result(persisted, record(action));
     }
 
     @Transactional(readOnly = true)
@@ -222,7 +217,7 @@ public class TransferProcessManager {
                 || !transfer.transferRequestId().equals(command.transferRequestId())
                 || !transfer.reservationRequestId().equals(command.reservationRequestId())
                 || !transfer.postingRequestId().equals(command.postingRequestId())) {
-            throw new TransferConflictException("transfer request conflicts with existing workflow");
+            throw new TransferConflictException("Transfer workflow request conflicts with existing data");
         }
     }
 

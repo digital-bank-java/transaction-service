@@ -167,9 +167,11 @@ public final class Transfer {
         requireMatching(reservationRequestId, receivedReservationRequestId, "reservationRequestId");
         var normalizedReservationId = requireText(receivedReservationId, "reservationId");
 
-        if (status == TransferStatus.AWAITING_LEDGER_POSTING
-                && Objects.equals(reservationId, normalizedReservationId)) {
-            return false;
+        if (reservationId != null) {
+            if (Objects.equals(reservationId, normalizedReservationId)) {
+                return false;
+            }
+            throw new TransferConflictException("reservationId does not match the existing transfer reservation");
         }
         transitionTo(TransferStatus.AWAITING_LEDGER_POSTING);
         reservationId = normalizedReservationId;

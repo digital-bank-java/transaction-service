@@ -8,17 +8,7 @@ public interface TransferWorkflowRepository {
 
     Optional<Transfer> findById(UUID transferId);
 
-    /**
-     * Creates the workflow only when its primary identity is not already present.
-     * Persistence adapters must implement this atomically when backed by a database.
-     */
-    default boolean createIfAbsent(Transfer transfer) {
-        if (findById(transfer.id()).isPresent()) {
-            return false;
-        }
-        save(transfer);
-        return true;
-    }
+    Transfer saveIfAbsent(Transfer transfer);
 
     Transfer save(Transfer transfer);
 }

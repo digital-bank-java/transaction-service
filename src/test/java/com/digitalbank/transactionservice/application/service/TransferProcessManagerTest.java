@@ -184,7 +184,7 @@ class TransferProcessManagerTest {
 
         assertThat(result.transfer().id()).isEqualTo(TRANSFER_ID);
         assertThat(result.actions()).hasSize(1);
-        assertThat(repository.createIfAbsentCalled).isTrue();
+        assertThat(repository.saveIfAbsentCalled).isTrue();
     }
 
     @Test
@@ -252,6 +252,11 @@ class TransferProcessManagerTest {
         }
 
         @Override
+        public synchronized Transfer saveIfAbsent(Transfer transfer) {
+            return values.computeIfAbsent(transfer.id(), ignored -> transfer);
+        }
+
+        @Override
         public Transfer save(Transfer transfer) {
             values.put(transfer.id(), transfer);
             return transfer;
@@ -260,7 +265,7 @@ class TransferProcessManagerTest {
 
     private static final class AtomicCreationOnlyWorkflowRepository implements TransferWorkflowRepository {
 
-        private boolean createIfAbsentCalled;
+        private boolean saveIfAbsentCalled;
 
         @Override
         public Optional<Transfer> findById(UUID transferId) {
@@ -268,9 +273,9 @@ class TransferProcessManagerTest {
         }
 
         @Override
-        public boolean createIfAbsent(Transfer transfer) {
-            createIfAbsentCalled = true;
-            return true;
+        public Transfer saveIfAbsent(Transfer transfer) {
+            saveIfAbsentCalled = true;
+            return transfer;
         }
 
         @Override

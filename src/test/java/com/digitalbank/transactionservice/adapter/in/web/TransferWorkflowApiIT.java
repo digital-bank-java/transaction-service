@@ -303,7 +303,7 @@ class TransferWorkflowApiIT {
                 "repository-lookup-reservation-request",
                 "repository-lookup-posting-request");
 
-        assertThat(workflowRepository.createIfAbsent(transfer)).isTrue();
+        assertThat(workflowRepository.saveIfAbsent(transfer)).isNotNull();
 
         mockMvc.perform(get("/internal/v1/transfer-workflows/{transferId}", transferId)
                         .header(HttpHeaders.AUTHORIZATION, TestSecurityConfig.AUTHORIZED_AUTHORIZATION))

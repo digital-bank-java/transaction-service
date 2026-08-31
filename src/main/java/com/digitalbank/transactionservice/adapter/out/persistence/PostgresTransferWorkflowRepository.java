@@ -26,27 +26,39 @@ class PostgresTransferWorkflowRepository implements TransferWorkflowRepository {
     }
 
     @Override
-    public boolean createIfAbsent(Transfer transfer) {
-        var created = (h2 ? repository.createIfAbsentH2(
-                        transfer.id(),
-                        transfer.sourceAccountId(),
-                        transfer.destinationAccountId(),
-                        transfer.amount(),
-                        transfer.currency(),
-                        transfer.correlationId(),
-                        transfer.transferRequestId(),
-                        transfer.reservationRequestId(),
-                        transfer.postingRequestId()) : repository.createIfAbsent(
-                        transfer.id(),
-                        transfer.sourceAccountId(),
-                        transfer.destinationAccountId(),
-                        transfer.amount(),
-                        transfer.currency(),
+    public Transfer saveIfAbsent(Transfer transfer) {
+        if (h2) {
+            return saveIfAbsentOnH2(transfer);
+        }
+        repository.insertIfAbsent(
+                transfer.id(),
+                transfer.sourceAccountId(),
+                transfer.destinationAccountId(),
+                transfer.amount(),
+                transfer.currency(),
+                transfer.correlationId(),
+                transfer.transferRequestId(),
+                transfer.reservationRequestId(),
+                transfer.postingRequestId(),
+                transfer.reservationId(),
+                transfer.status().name(),
+                transfer.version());
+        return findById(transfer.id())
+                .orElseThrow(() -> new IllegalStateException("Transfer workflow was not persisted: " + transfer.id()));
+    }
+
+    private Transfer saveIfAbsentOnH2(Transfer transfer) {
+        var existing = repository.findById(transfer.id())
+                .or(() -> repository.findByCorrelationIdOrTransferRequestIdOrReservationRequestIdOrPostingRequestId(
                         transfer.correlationId(),
                         transfer.transferRequestId(),
                         transfer.reservationRequestId(),
                         transfer.postingRequestId()));
-        return created == 1;
+        if (existing.isPresent()) {
+            return TransferWorkflowJpaMapper.toDomain(existing.orElseThrow());
+        }
+        return TransferWorkflowJpaMapper.toDomain(
+                repository.saveAndFlush(TransferWorkflowJpaMapper.newEntity(transfer)));
     }
 
     @Override
