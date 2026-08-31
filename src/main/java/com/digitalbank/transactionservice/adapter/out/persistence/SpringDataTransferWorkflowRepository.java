@@ -3,11 +3,16 @@ package com.digitalbank.transactionservice.adapter.out.persistence;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 interface SpringDataTransferWorkflowRepository extends JpaRepository<TransferWorkflowJpaEntity, UUID> {
+
+    java.util.Optional<TransferWorkflowJpaEntity> findByCorrelationIdOrTransferRequestIdOrReservationRequestIdOrPostingRequestId(
+            String correlationId,
+            String transferRequestId,
+            String reservationRequestId,
+            String postingRequestId);
 
     @Modifying
     @Query(value = """

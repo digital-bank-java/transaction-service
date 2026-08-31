@@ -330,7 +330,7 @@ class TransferWorkflowControllerTest {
                 .andExpect(content().contentTypeCompatibleWith(APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.type").value("https://digital-bank-java.local/problems/transfer-workflow-conflict"))
                 .andExpect(jsonPath("$.title").value("Transfer workflow conflict"))
-                .andExpect(jsonPath("$.detail").value("transfer request conflicts with existing workflow"));
+                .andExpect(jsonPath("$.detail").value("Transfer workflow request conflicts with existing data"));
     }
 
     private static final class InMemoryWorkflowRepository implements TransferWorkflowRepository {
@@ -340,6 +340,11 @@ class TransferWorkflowControllerTest {
         @Override
         public Optional<Transfer> findById(UUID transferId) {
             return Optional.ofNullable(values.get(transferId));
+        }
+
+        @Override
+        public synchronized Transfer saveIfAbsent(Transfer transfer) {
+            return values.computeIfAbsent(transfer.id(), ignored -> transfer);
         }
 
         @Override

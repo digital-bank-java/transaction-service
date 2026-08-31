@@ -217,7 +217,7 @@ public class TransferProcessManager {
                 || !transfer.transferRequestId().equals(command.transferRequestId())
                 || !transfer.reservationRequestId().equals(command.reservationRequestId())
                 || !transfer.postingRequestId().equals(command.postingRequestId())) {
-            throw new TransferConflictException("transfer request conflicts with existing workflow");
+            throw new TransferConflictException("Transfer workflow request conflicts with existing data");
         }
     }
 

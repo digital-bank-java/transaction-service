@@ -58,7 +58,7 @@ class TransferWorkflowController {
               "type": "https://digital-bank-java.local/problems/transfer-workflow-conflict",
               "title": "Transfer workflow conflict",
               "status": 409,
-              "detail": "transfer request conflicts with existing workflow"
+              "detail": "Transfer workflow request conflicts with existing data"
             }
             """;
 

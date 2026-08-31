@@ -4,6 +4,7 @@ import com.digitalbank.transactionservice.application.port.out.WorkflowAction;
 import com.digitalbank.transactionservice.application.port.out.WorkflowActionRepository;
 import java.util.UUID;
 import javax.sql.DataSource;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -20,6 +21,17 @@ class PostgresWorkflowActionRepository implements WorkflowActionRepository {
     @Override
     public boolean recordIfAbsent(WorkflowAction action) {
         var entity = new WorkflowActionJpaEntity(action);
+        if (h2) {
+            if (repository.existsById(entity.actionId())) {
+                return false;
+            }
+            try {
+                repository.saveAndFlush(entity);
+                return true;
+            } catch (DataIntegrityViolationException exception) {
+                return false;
+            }
+        }
         return repository.insertIfAbsent(
                 entity.actionId(),
                 entity.transferId(),

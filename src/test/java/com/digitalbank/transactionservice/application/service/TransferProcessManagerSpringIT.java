@@ -29,11 +29,6 @@ class TransferProcessManagerSpringIT {
     @Autowired
     private TransferWorkflowRepository workflowRepository;
 
-    @DynamicPropertySource
-    static void registerProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", () -> TEST_DATABASE);
-    }
-
     @Test
     void springWiringPersistsInitialTransferAndAction() {
         var transferId = UUID.randomUUID();
