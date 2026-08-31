@@ -98,7 +98,7 @@ class TransferWorkflowPersistenceIT {
 
             assertThat(results).allSatisfy(result -> assertThat(result.transfer().id()).isEqualTo(transferId));
             assertThat(results.stream().mapToInt(result -> result.actions().size()).sum()).isEqualTo(1);
-            assertThat(count("transfer_workflows", transferId)).isEqualTo(1);
+            assertThat(countByPrimaryKey("transfer_workflows", transferId)).isEqualTo(1);
             assertThat(count("transfer_workflow_actions", transferId)).isEqualTo(1);
         } finally {
             executor.shutdownNow();
@@ -163,5 +163,10 @@ class TransferWorkflowPersistenceIT {
     private int count(String table, UUID id) {
         return jdbcTemplate.queryForObject(
                 "select count(*) from " + table + " where transfer_id = ?", Integer.class, id);
+    }
+
+    private int countByPrimaryKey(String table, UUID id) {
+        return jdbcTemplate.queryForObject(
+                "select count(*) from " + table + " where id = ?", Integer.class, id);
     }
 }
