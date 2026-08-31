@@ -16,11 +16,20 @@ class PostgresWorkflowActionRepository implements WorkflowActionRepository {
 
     @Override
     public boolean recordIfAbsent(WorkflowAction action) {
-        if (repository.existsById(action.actionId())) {
-            return false;
-        }
-        repository.saveAndFlush(new WorkflowActionJpaEntity(action));
-        return true;
+        var entity = new WorkflowActionJpaEntity(action);
+        return repository.insertIfAbsent(
+                entity.actionId(),
+                entity.transferId(),
+                entity.actionType(),
+                entity.correlationId(),
+                entity.sourceAccountId(),
+                entity.destinationAccountId(),
+                entity.amount(),
+                entity.currency(),
+                entity.requestId(),
+                entity.reservationRequestId(),
+                entity.postingRequestId(),
+                entity.reservationId()) == 1;
     }
 
     @Override

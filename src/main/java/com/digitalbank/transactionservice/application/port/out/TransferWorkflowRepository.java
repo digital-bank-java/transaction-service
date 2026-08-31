@@ -8,5 +8,7 @@ public interface TransferWorkflowRepository {
 
     Optional<Transfer> findById(UUID transferId);
 
+    Transfer saveIfAbsent(Transfer transfer);
+
     Transfer save(Transfer transfer);
 }

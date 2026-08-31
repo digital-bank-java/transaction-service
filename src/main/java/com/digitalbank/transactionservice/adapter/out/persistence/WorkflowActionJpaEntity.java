@@ -91,4 +91,24 @@ class WorkflowActionJpaEntity {
     String actionId() { return actionId; }
 
     UUID transferId() { return transferId; }
+
+    String actionType() { return actionType; }
+
+    String correlationId() { return correlationId; }
+
+    UUID sourceAccountId() { return sourceAccountId; }
+
+    UUID destinationAccountId() { return destinationAccountId; }
+
+    BigDecimal amount() { return amount; }
+
+    String currency() { return currency; }
+
+    String requestId() { return requestId; }
+
+    String reservationRequestId() { return reservationRequestId; }
+
+    String postingRequestId() { return postingRequestId; }
+
+    String reservationId() { return reservationId; }
 }

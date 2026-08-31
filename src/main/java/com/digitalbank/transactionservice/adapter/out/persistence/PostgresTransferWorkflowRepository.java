@@ -23,6 +23,25 @@ class PostgresTransferWorkflowRepository implements TransferWorkflowRepository {
     }
 
     @Override
+    public Transfer saveIfAbsent(Transfer transfer) {
+        repository.insertIfAbsent(
+                transfer.id(),
+                transfer.sourceAccountId(),
+                transfer.destinationAccountId(),
+                transfer.amount(),
+                transfer.currency(),
+                transfer.correlationId(),
+                transfer.transferRequestId(),
+                transfer.reservationRequestId(),
+                transfer.postingRequestId(),
+                transfer.reservationId(),
+                transfer.status().name(),
+                transfer.version());
+        return findById(transfer.id())
+                .orElseThrow(() -> new IllegalStateException("Transfer workflow was not persisted: " + transfer.id()));
+    }
+
+    @Override
     public Transfer save(Transfer transfer) {
         var entity = repository.findById(transfer.id()).orElse(null);
         if (entity == null) {

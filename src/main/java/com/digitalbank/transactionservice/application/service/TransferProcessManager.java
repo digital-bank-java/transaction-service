@@ -43,12 +43,6 @@ public class TransferProcessManager {
 
     @Transactional
     public WorkflowResult requestTransfer(RequestTransferCommand command) {
-        var existing = workflowRepository.findById(command.transferId());
-        if (existing.isPresent()) {
-            assertSameRequest(existing.orElseThrow(), command);
-            return result(existing.orElseThrow());
-        }
-
         var transfer = Transfer.request(
                 command.transferId(),
                 command.sourceAccountId(),
@@ -59,10 +53,11 @@ public class TransferProcessManager {
                 command.transferRequestId(),
                 command.reservationRequestId(),
                 command.postingRequestId());
-        workflowRepository.save(transfer);
+        var persisted = workflowRepository.saveIfAbsent(transfer);
+        assertSameRequest(persisted, command);
 
-        var action = RequestAccountReservation.forTransfer(transfer);
-        return result(transfer, record(action));
+        var action = RequestAccountReservation.forTransfer(persisted);
+        return result(persisted, record(action));
     }
 
     @Transactional

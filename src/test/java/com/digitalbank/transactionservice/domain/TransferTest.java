@@ -95,6 +95,20 @@ class TransferTest {
     }
 
     @Test
+    void reservationIdentityCannotBeReboundByAnotherEvent() {
+        var transfer = requestedTransfer();
+        transfer.accountReservationCreated(
+                "reservation-request-001", "reservation-001", "transfer-correlation-001");
+
+        assertThatThrownBy(() -> transfer.accountReservationCreated(
+                "reservation-request-001", "reservation-002", "transfer-correlation-001"))
+                .isInstanceOf(TransferConflictException.class)
+                .hasMessage("reservationId does not match the existing transfer reservation");
+        assertThat(transfer.reservationId()).isEqualTo("reservation-001");
+        assertThat(transfer.version()).isEqualTo(1);
+    }
+
+    @Test
     void reservationCorrelationMismatchIsRejectedWithoutMutation() {
         var transfer = requestedTransfer();
 
