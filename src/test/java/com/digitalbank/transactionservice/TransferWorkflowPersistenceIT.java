@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.orm.jpa.JpaOptimisticLockingFailureException;
 import org.testcontainers.junit.jupiter.Container;
@@ -139,6 +140,26 @@ class TransferWorkflowPersistenceIT {
         assertThatThrownBy(() -> workflowRepository.save(stale))
                 .isInstanceOf(JpaOptimisticLockingFailureException.class)
                 .hasRootCauseInstanceOf(OptimisticLockException.class);
+    }
+
+    @Test
+    void rejectsWorkflowDeletionWhenActionsExist() {
+        processManager.requestTransfer(command());
+
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "delete from transfer_workflows where id = ?", transferId))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void rejectsWorkflowDeletionWhenEventsExist() {
+        processManager.requestTransfer(command());
+        processManager.handle(new LedgerPostingCompleted(
+                transferId, "event-fk-check", correlationId, "ledger-event-request", postingRequestId));
+
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "delete from transfer_workflows where id = ?", transferId))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     private RequestTransferCommand command() {
