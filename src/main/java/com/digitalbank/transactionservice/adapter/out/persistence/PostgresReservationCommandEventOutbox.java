@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import javax.sql.DataSource;
 import org.springframework.stereotype.Repository;
@@ -87,6 +88,12 @@ class PostgresReservationCommandEventOutbox implements ReservationCommandEventOu
         } else {
             repository.markFailedPostgres(event.eventId(), claimToken, error, retryAt);
         }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<String> payloadFor(ReservationCommandEvent event) {
+        return repository.findById(event.eventId()).map(ReservationCommandEventOutboxJpaEntity::jsonPayload);
     }
 
     private String serialize(ReservationCommandEvent event) {
