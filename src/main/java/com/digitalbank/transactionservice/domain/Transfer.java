@@ -52,6 +52,9 @@ public final class Transfer {
         if (status == TransferStatus.AWAITING_LEDGER_POSTING && this.reservationId == null) {
             throw new IllegalArgumentException("awaiting ledger posting requires reservationId");
         }
+        if (status == TransferStatus.AWAITING_RESERVATION_RELEASE && this.reservationId == null) {
+            throw new IllegalArgumentException("awaiting reservation release requires reservationId");
+        }
         if (status == TransferStatus.PENDING && this.reservationId != null) {
             throw new IllegalArgumentException("pending transfer must not have reservationId");
         }
@@ -202,6 +205,37 @@ public final class Transfer {
     public boolean ledgerPostingFailed(String receivedPostingRequestId, String receivedCorrelationId) {
         requireMatching(correlationId, receivedCorrelationId, "correlationId");
         requireMatching(postingRequestId, receivedPostingRequestId, "postingRequestId");
+        if (status == TransferStatus.AWAITING_RESERVATION_RELEASE
+                || status == TransferStatus.FAILED) {
+            return false;
+        }
+        transitionTo(TransferStatus.AWAITING_RESERVATION_RELEASE);
+        version++;
+        return true;
+    }
+
+    public boolean accountReservationReleased(
+            String receivedReservationRequestId,
+            String receivedReservationId,
+            String receivedCorrelationId) {
+        requireMatching(correlationId, receivedCorrelationId, "correlationId");
+        requireMatching(reservationRequestId, receivedReservationRequestId, "reservationRequestId");
+        requireMatching(reservationId, receivedReservationId, "reservationId");
+        if (status == TransferStatus.FAILED) {
+            return false;
+        }
+        transitionTo(TransferStatus.FAILED);
+        version++;
+        return true;
+    }
+
+    public boolean accountReservationExpired(
+            String receivedReservationRequestId,
+            String receivedReservationId,
+            String receivedCorrelationId) {
+        requireMatching(correlationId, receivedCorrelationId, "correlationId");
+        requireMatching(reservationRequestId, receivedReservationRequestId, "reservationRequestId");
+        requireMatching(reservationId, receivedReservationId, "reservationId");
         if (status == TransferStatus.FAILED) {
             return false;
         }
@@ -224,7 +258,11 @@ public final class Transfer {
                 && target == TransferStatus.AWAITING_LEDGER_POSTING)
                 || (status == TransferStatus.PENDING && target == TransferStatus.FAILED)
                 || (status == TransferStatus.AWAITING_LEDGER_POSTING
-                        && (target == TransferStatus.COMPLETED || target == TransferStatus.FAILED))
+                        && (target == TransferStatus.COMPLETED || target == TransferStatus.AWAITING_RESERVATION_RELEASE))
+                || (status == TransferStatus.AWAITING_RESERVATION_RELEASE
+                        && target == TransferStatus.FAILED)
+                || (status == TransferStatus.AWAITING_LEDGER_POSTING
+                        && target == TransferStatus.FAILED)
                 || (status == TransferStatus.COMPLETED && target == TransferStatus.REVERSED);
 
         if (!allowed) {

@@ -1,7 +1,10 @@
 package com.digitalbank.transactionservice.application.port.out;
 
 import com.digitalbank.transactionservice.application.port.in.AccountReservationCreated;
+import com.digitalbank.transactionservice.application.port.in.AccountReservationAccepted;
+import com.digitalbank.transactionservice.application.port.in.AccountReservationExpired;
 import com.digitalbank.transactionservice.application.port.in.AccountReservationRejected;
+import com.digitalbank.transactionservice.application.port.in.AccountReservationReleased;
 import com.digitalbank.transactionservice.application.port.in.LedgerPostingCompleted;
 import com.digitalbank.transactionservice.application.port.in.LedgerPostingFailed;
 import java.util.Objects;
@@ -46,6 +49,13 @@ public record WorkflowEventRecord(
                 EventStatus.PROCESSED);
     }
 
+    public static WorkflowEventRecord from(AccountReservationAccepted event) {
+        return new WorkflowEventRecord(
+                event.eventId(), event.transferId(), EventType.ACCOUNT_RESERVATION_ACCEPTED,
+                event.correlationId(), event.reservationRequestId(), event.reservationRequestId(),
+                event.reservationId(), null, null, EventStatus.PROCESSED);
+    }
+
     public static WorkflowEventRecord from(AccountReservationRejected event) {
         return new WorkflowEventRecord(
                 event.eventId(),
@@ -58,6 +68,20 @@ public record WorkflowEventRecord(
                 null,
                 event.reason(),
                 EventStatus.PROCESSED);
+    }
+
+    public static WorkflowEventRecord from(AccountReservationReleased event) {
+        return new WorkflowEventRecord(
+                event.eventId(), event.transferId(), EventType.ACCOUNT_RESERVATION_RELEASED,
+                event.correlationId(), event.reservationRequestId(), event.reservationRequestId(),
+                event.reservationId(), null, null, EventStatus.PROCESSED);
+    }
+
+    public static WorkflowEventRecord from(AccountReservationExpired event) {
+        return new WorkflowEventRecord(
+                event.eventId(), event.transferId(), EventType.ACCOUNT_RESERVATION_EXPIRED,
+                event.correlationId(), event.reservationRequestId(), event.reservationRequestId(),
+                event.reservationId(), null, null, EventStatus.PROCESSED);
     }
 
     public static WorkflowEventRecord from(LedgerPostingCompleted event) {
@@ -133,7 +157,10 @@ public record WorkflowEventRecord(
 
     public enum EventType {
         ACCOUNT_RESERVATION_CREATED,
+        ACCOUNT_RESERVATION_ACCEPTED,
         ACCOUNT_RESERVATION_REJECTED,
+        ACCOUNT_RESERVATION_RELEASED,
+        ACCOUNT_RESERVATION_EXPIRED,
         LEDGER_POSTING_COMPLETED,
         LEDGER_POSTING_FAILED
     }
