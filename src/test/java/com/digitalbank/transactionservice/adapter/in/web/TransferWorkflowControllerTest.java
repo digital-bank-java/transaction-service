@@ -2,6 +2,7 @@ package com.digitalbank.transactionservice.adapter.in.web;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.http.MediaType.APPLICATION_PROBLEM_JSON;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -72,6 +73,60 @@ class TransferWorkflowControllerTest {
                 .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.actions[0].type").value("REQUEST_ACCOUNT_RESERVATION"))
                 .andExpect(jsonPath("$.actions[0].reservationRequestId").value("reservation-request-001"));
+    }
+
+    @Test
+    void getsExistingTransferWorkflowByTransferId() throws Exception {
+        var transferId = UUID.randomUUID();
+        var sourceAccountId = UUID.randomUUID();
+        var destinationAccountId = UUID.randomUUID();
+
+        mockMvc.perform(post("/internal/v1/transfer-workflows")
+                        .contentType(APPLICATION_JSON)
+                        .content(
+                                """
+                                {
+                                  "transferId": "%s",
+                                  "sourceAccountId": "%s",
+                                  "destinationAccountId": "%s",
+                                  "amount": 15.75,
+                                  "currency": "AED",
+                                  "correlationId": "transfer-correlation-lookup",
+                                  "transferRequestId": "transfer-request-lookup",
+                                  "reservationRequestId": "reservation-request-lookup",
+                                  "postingRequestId": "posting-request-lookup"
+                                }
+                                """
+                                        .formatted(transferId, sourceAccountId, destinationAccountId)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/internal/v1/transfer-workflows/{transferId}", transferId))
+                .andExpect(status().isOk())
+                .andExpect(header().doesNotExist("Idempotent-Replay"))
+                .andExpect(content().contentTypeCompatibleWith(APPLICATION_JSON))
+                .andExpect(jsonPath("$.transferId").value(transferId.toString()))
+                .andExpect(jsonPath("$.sourceAccountId").value(sourceAccountId.toString()))
+                .andExpect(jsonPath("$.destinationAccountId").value(destinationAccountId.toString()))
+                .andExpect(jsonPath("$.amount").value(15.75))
+                .andExpect(jsonPath("$.currency").value("AED"))
+                .andExpect(jsonPath("$.correlationId").value("transfer-correlation-lookup"))
+                .andExpect(jsonPath("$.transferRequestId").value("transfer-request-lookup"))
+                .andExpect(jsonPath("$.reservationRequestId").value("reservation-request-lookup"))
+                .andExpect(jsonPath("$.postingRequestId").value("posting-request-lookup"))
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.actions").isEmpty());
+    }
+
+    @Test
+    void returnsProblemDetailsWhenTransferWorkflowIsNotFound() throws Exception {
+        var transferId = UUID.randomUUID();
+
+        mockMvc.perform(get("/internal/v1/transfer-workflows/{transferId}", transferId))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.type").value("https://digital-bank-java.local/problems/transfer-workflow-not-found"))
+                .andExpect(jsonPath("$.title").value("Transfer workflow not found"))
+                .andExpect(jsonPath("$.detail").value("Transfer workflow not found: " + transferId));
     }
 
     @Test
