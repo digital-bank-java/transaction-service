@@ -74,6 +74,7 @@ class TransferWorkflowPersistenceIT {
     @Test
     void persistsWorkflowActionAndReloadableState() {
         processManager.requestTransfer(command());
+        processManager.requestTransfer(command());
 
         var stored = workflowRepository.findById(transferId);
 
@@ -83,6 +84,11 @@ class TransferWorkflowPersistenceIT {
             assertThat(transfer.version()).isZero();
         });
         assertThat(count("transfer_workflow_actions", transferId)).isEqualTo(1);
+        assertThat(countByColumn("transfer_created_event_outbox", "aggregate_id", transferId)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+                "select event_type from transfer_created_event_outbox where aggregate_id = ?",
+                String.class,
+                transferId)).isEqualTo("TransferCreated.v1");
     }
 
     @Test
@@ -170,5 +176,10 @@ class TransferWorkflowPersistenceIT {
     private int countByPrimaryKey(String table, UUID id) {
         return jdbcTemplate.queryForObject(
                 "select count(*) from " + table + " where id = ?", Integer.class, id);
+    }
+
+    private int countByColumn(String table, String column, UUID id) {
+        return jdbcTemplate.queryForObject(
+                "select count(*) from " + table + " where " + column + " = ?", Integer.class, id);
     }
 }

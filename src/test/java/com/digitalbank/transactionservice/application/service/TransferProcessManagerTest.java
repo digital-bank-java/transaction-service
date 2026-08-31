@@ -8,6 +8,8 @@ import com.digitalbank.transactionservice.application.port.in.AccountReservation
 import com.digitalbank.transactionservice.application.port.in.LedgerPostingCompleted;
 import com.digitalbank.transactionservice.application.port.in.LedgerPostingFailed;
 import com.digitalbank.transactionservice.application.port.in.RequestTransferCommand;
+import com.digitalbank.transactionservice.application.port.out.TransferCreatedEvent;
+import com.digitalbank.transactionservice.application.port.out.TransferCreatedEventOutbox;
 import com.digitalbank.transactionservice.application.port.out.TransferWorkflowRepository;
 import com.digitalbank.transactionservice.application.port.out.WorkflowAction;
 import com.digitalbank.transactionservice.application.port.out.WorkflowActionRepository;
@@ -40,6 +42,7 @@ class TransferProcessManagerTest {
     private InMemoryWorkflowRepository workflows;
     private InMemoryEventInbox events;
     private InMemoryActionRepository actions;
+    private InMemoryTransferCreatedEventOutbox outbox;
     private TransferProcessManager processManager;
 
     @BeforeEach
@@ -47,7 +50,8 @@ class TransferProcessManagerTest {
         workflows = new InMemoryWorkflowRepository();
         events = new InMemoryEventInbox();
         actions = new InMemoryActionRepository();
-        processManager = new TransferProcessManager(workflows, events, actions);
+        outbox = new InMemoryTransferCreatedEventOutbox();
+        processManager = new TransferProcessManager(workflows, events, actions, outbox);
     }
 
     @Test
@@ -61,6 +65,21 @@ class TransferProcessManagerTest {
     }
 
     @Test
+    void requestTransferRecordsTransferCreatedEventInOutbox() {
+        processManager.requestTransfer(command());
+
+        assertThat(outbox.events()).singleElement().satisfies(event -> {
+            assertThat(event.eventType()).isEqualTo("TransferCreated.v1");
+            assertThat(event.schemaVersion()).isEqualTo("1.0.0");
+            assertThat(event.producer()).isEqualTo("transaction-service");
+            assertThat(event.aggregateId()).isEqualTo(TRANSFER_ID);
+            assertThat(event.transactionId()).isEqualTo(TRANSFER_ID);
+            assertThat(event.causationId()).isEqualTo("transfer-request-001");
+            assertThat(event.status()).isEqualTo(TransferStatus.PENDING);
+        });
+    }
+
+    @Test
     void repeatedTransferRequestIsIdempotent() {
         processManager.requestTransfer(command());
 
@@ -69,6 +88,7 @@ class TransferProcessManagerTest {
         assertThat(retry.transfer().status()).isEqualTo(TransferStatus.PENDING);
         assertThat(retry.actions()).isEmpty();
         assertThat(actions.actions()).hasSize(1);
+        assertThat(outbox.events()).hasSize(1);
     }
 
     @Test
@@ -178,7 +198,7 @@ class TransferProcessManagerTest {
     @Test
     void usesAtomicWorkflowCreationBeforeReadingAnExistingRequest() {
         var repository = new AtomicCreationOnlyWorkflowRepository();
-        var manager = new TransferProcessManager(repository, events, actions);
+        var manager = new TransferProcessManager(repository, events, actions, outbox);
 
         var result = manager.requestTransfer(command());
 
@@ -260,6 +280,23 @@ class TransferProcessManagerTest {
         public Transfer save(Transfer transfer) {
             values.put(transfer.id(), transfer);
             return transfer;
+        }
+    }
+
+    private static final class InMemoryTransferCreatedEventOutbox implements TransferCreatedEventOutbox {
+        private final List<TransferCreatedEvent> values = new ArrayList<>();
+
+        @Override
+        public boolean recordIfAbsent(TransferCreatedEvent event) {
+            if (values.stream().anyMatch(existing -> existing.eventId().equals(event.eventId()))) {
+                return false;
+            }
+            values.add(event);
+            return true;
+        }
+
+        List<TransferCreatedEvent> events() {
+            return values;
         }
     }
 

@@ -8,6 +8,8 @@ import com.digitalbank.transactionservice.application.port.in.RequestTransferCom
 import com.digitalbank.transactionservice.application.port.out.ReleaseAccountReservation;
 import com.digitalbank.transactionservice.application.port.out.RequestAccountReservation;
 import com.digitalbank.transactionservice.application.port.out.RequestLedgerPosting;
+import com.digitalbank.transactionservice.application.port.out.TransferCreatedEvent;
+import com.digitalbank.transactionservice.application.port.out.TransferCreatedEventOutbox;
 import com.digitalbank.transactionservice.application.port.out.TransferWorkflowRepository;
 import com.digitalbank.transactionservice.application.port.out.WorkflowAction;
 import com.digitalbank.transactionservice.application.port.out.WorkflowActionRepository;
@@ -32,14 +34,18 @@ public class TransferProcessManager {
     private final TransferWorkflowRepository workflowRepository;
     private final WorkflowEventInbox eventInbox;
     private final WorkflowActionRepository actionRepository;
+    private final TransferCreatedEventOutbox transferCreatedEventOutbox;
 
     public TransferProcessManager(
             TransferWorkflowRepository workflowRepository,
             WorkflowEventInbox eventInbox,
-            WorkflowActionRepository actionRepository) {
+            WorkflowActionRepository actionRepository,
+            TransferCreatedEventOutbox transferCreatedEventOutbox) {
         this.workflowRepository = Objects.requireNonNull(workflowRepository, "workflowRepository must not be null");
         this.eventInbox = Objects.requireNonNull(eventInbox, "eventInbox must not be null");
         this.actionRepository = Objects.requireNonNull(actionRepository, "actionRepository must not be null");
+        this.transferCreatedEventOutbox = Objects.requireNonNull(
+                transferCreatedEventOutbox, "transferCreatedEventOutbox must not be null");
     }
 
     @Transactional
@@ -58,6 +64,7 @@ public class TransferProcessManager {
         assertSameRequest(persisted, command);
 
         var action = RequestAccountReservation.forTransfer(persisted);
+        transferCreatedEventOutbox.recordIfAbsent(TransferCreatedEvent.from(persisted));
         return result(persisted, record(action));
     }
 
