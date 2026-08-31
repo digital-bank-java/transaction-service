@@ -130,6 +130,18 @@ class TransferWorkflowControllerTest {
     }
 
     @Test
+    void returnsProblemDetailsForInvalidTransferId() throws Exception {
+        mockMvc.perform(get("/internal/v1/transfer-workflows/{transferId}", "not-a-uuid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.type").value("https://digital-bank-java.local/problems/validation-error"))
+                .andExpect(jsonPath("$.title").value("Invalid request"))
+                .andExpect(jsonPath("$.detail").value("Request validation failed"))
+                .andExpect(jsonPath("$.errors[0].field").value("transferId"))
+                .andExpect(jsonPath("$.errors[0].message").value("must be a valid UUID"));
+    }
+
+    @Test
     void returnsProblemDetailsForValidationFailure() throws Exception {
         mockMvc.perform(post("/internal/v1/transfer-workflows")
                         .contentType(APPLICATION_JSON)
