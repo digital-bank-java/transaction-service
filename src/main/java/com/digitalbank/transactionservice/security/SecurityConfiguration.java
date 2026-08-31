@@ -31,6 +31,8 @@ class SecurityConfiguration {
                         .permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/internal/v1/transfer-workflows")
                         .access(transferAuthorizationManager)
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/internal/v1/transfer-workflows/**")
+                        .access(transferAuthorizationManager)
                         .anyRequest()
                         .denyAll())
                 .exceptionHandling(exceptions ->

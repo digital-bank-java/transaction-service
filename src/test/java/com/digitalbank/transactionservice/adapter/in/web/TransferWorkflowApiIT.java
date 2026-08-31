@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -222,6 +223,13 @@ class TransferWorkflowApiIT {
     }
 
     @Test
+    void rejectsUnauthenticatedWorkflowLookup() throws Exception {
+        mockMvc.perform(get("/internal/v1/transfer-workflows/{transferId}", UUID.randomUUID()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, "Bearer"));
+    }
+
+    @Test
     void rejectsAuthenticatedRequestFromUnapprovedSubjectWithoutCreatingWorkflow() throws Exception {
         var transferId = UUID.randomUUID();
 
@@ -297,7 +305,8 @@ class TransferWorkflowApiIT {
 
         assertThat(workflowRepository.createIfAbsent(transfer)).isTrue();
 
-        mockMvc.perform(get("/internal/v1/transfer-workflows/{transferId}", transferId))
+        mockMvc.perform(get("/internal/v1/transfer-workflows/{transferId}", transferId)
+                        .header(HttpHeaders.AUTHORIZATION, TestSecurityConfig.AUTHORIZED_AUTHORIZATION))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(APPLICATION_JSON))
                 .andExpect(jsonPath("$.transferId").value(transferId.toString()))
