@@ -17,6 +17,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+@SpringBootTest
 @Testcontainers
 @Import(TestSecurityConfig.class)
 class TransferProcessManagerSpringIT {
