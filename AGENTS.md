@@ -19,11 +19,12 @@ The current implementation owns only:
   replays.
 - Transfer saga/process-manager application boundary and workflow state.
 - PostgreSQL persistence for transfer workflows, inbox records, and actions.
+- Governed Kafka transport for account-reservation and ledger-posting workflow
+  messages, backed by transactional outbox and durable inbox persistence.
 
 It must not implement public transfer endpoints, direct account balance or
-ledger-entry mutation, Kafka producers or consumers, concrete topic/schema
-wiring, account reservation transport, ledger transport, or gateway routing in
-this foundation. Account Service owns account reservations and projections;
+ledger-entry mutation, public gateway routing, or ownership of reservations or
+ledger postings. Account Service owns account reservations and projections;
 Ledger Service owns immutable postings.
 
 ## Architecture And Naming
@@ -40,7 +41,10 @@ must stay independent of controllers, Helm templates, Kafka, and database
 entities. The process manager coordinates through input messages and output
 action/repository ports. The internal HTTP adapter at
 `/internal/v1/transfer-workflows` is for workflow orchestration only and is not
-a customer-facing balance mutation API.
+a customer-facing balance mutation API. The outbound
+`ledger.posting.requested.v1` contract must remain directly mappable to Ledger
+Service `PostLedgerEntryCommand`, including `description`, `effectiveAt`,
+`debitLines`, and `creditLines`.
 
 ## Local Commands
 

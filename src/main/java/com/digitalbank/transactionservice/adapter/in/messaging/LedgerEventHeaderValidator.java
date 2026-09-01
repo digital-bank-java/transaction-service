@@ -7,12 +7,12 @@ import java.util.List;
 import java.util.UUID;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 
-final class ReservationEventHeaderValidator {
+final class LedgerEventHeaderValidator {
 
     private static final List<String> REQUIRED_HEADERS = List.of(
             "event-id", "correlation-id", "causation-id", "producer", "schema-version", "occurred-at");
 
-    private ReservationEventHeaderValidator() {}
+    private LedgerEventHeaderValidator() {}
 
     static void validate(
             ConsumerRecord<String, String> record,
@@ -53,21 +53,22 @@ final class ReservationEventHeaderValidator {
         requiredText(payload, "correlationId");
         requiredText(payload, "causationId");
         requiredText(payload, "reservationRequestId");
+        requiredText(payload, "postingRequestId");
         if (!expectedEventType.equals(requiredText(payload, "eventType"))) {
-            throw new IllegalArgumentException("Unexpected reservation event type for topic");
+            throw new IllegalArgumentException("Unexpected ledger event type for topic");
         }
         if (!"1.0.0".equals(requiredText(payload, "schemaVersion"))) {
-            throw new IllegalArgumentException("Unsupported reservation schema version");
+            throw new IllegalArgumentException("Unsupported ledger schema version");
         }
         if (!expectedProducer.equals(requiredText(payload, "producer"))) {
-            throw new IllegalArgumentException("Unexpected reservation event producer");
+            throw new IllegalArgumentException("Unexpected ledger event producer");
         }
     }
 
     private static String requiredText(JsonNode payload, String field) {
         var value = payload.get(field);
         if (value == null || !value.isTextual() || value.textValue().isBlank()) {
-            throw new IllegalArgumentException("Missing required reservation field: " + field);
+            throw new IllegalArgumentException("Missing required ledger field: " + field);
         }
         return value.textValue();
     }

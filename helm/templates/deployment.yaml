@@ -43,6 +43,16 @@ spec:
               value: {{ .Values.reservationEvents.enabled | quote }}
             - name: TRANSACTION_EVENTS_RESERVATION_SIT_PLAINTEXT_ENABLED
               value: {{ .Values.reservationEvents.sitPlaintextEnabled | quote }}
+            - name: TRANSACTION_EVENTS_LEDGER_ENABLED
+              value: {{ .Values.ledgerEvents.enabled | quote }}
+            - name: TRANSACTION_EVENTS_LEDGER_SIT_PLAINTEXT_ENABLED
+              value: {{ .Values.ledgerEvents.sitPlaintextEnabled | quote }}
+            - name: LEDGER_POSTING_REQUESTED_TOPIC
+              value: {{ .Values.ledgerEvents.requestedTopic | quote }}
+            - name: LEDGER_POSTING_COMPLETED_TOPIC
+              value: {{ .Values.ledgerEvents.completedTopic | quote }}
+            - name: LEDGER_POSTING_FAILED_TOPIC
+              value: {{ .Values.ledgerEvents.failedTopic | quote }}
           securityContext:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
           ports:

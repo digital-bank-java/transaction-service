@@ -9,3 +9,7 @@ kafka:
 reservationEvents:
   enabled: true
   sitPlaintextEnabled: true
+
+ledgerEvents:
+  enabled: true
+  sitPlaintextEnabled: true
