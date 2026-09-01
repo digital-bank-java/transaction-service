@@ -57,7 +57,7 @@ class LedgerCommandEventOutboxTest {
 
     private static String json(LedgerPostingRequestedEvent event) {
         return """
-                {"eventId":"%s","eventType":"LedgerPostingRequested.v1","schemaVersion":"1.0.0","producer":"transaction-service","occurredAt":"%s","aggregateId":"%s","correlationId":"%s","causationId":"%s","transactionId":"%s","reservationRequestId":"%s","reservationId":"%s","postingRequestId":"%s","sourceAccountId":"%s","destinationAccountId":"%s","amount":"12.50","currency":"AED"}
+                {"eventId":"%s","eventType":"LedgerPostingRequested.v1","schemaVersion":"1.0.0","producer":"transaction-service","occurredAt":"%s","aggregateId":"%s","correlationId":"%s","causationId":"%s","transactionId":"%s","reservationRequestId":"%s","reservationId":"%s","postingRequestId":"%s","description":"Transfer posting for transfer-request-001","currency":"AED","effectiveAt":"%s","debitLines":[{"accountId":"22222222-2222-2222-2222-222222222222","amount":"12.50"}],"creditLines":[{"accountId":"33333333-3333-3333-3333-333333333333","amount":"12.50"}]}
                 """.formatted(
                 event.eventId(),
                 event.occurredAt(),
@@ -68,8 +68,7 @@ class LedgerCommandEventOutboxTest {
                 event.reservationRequestId(),
                 event.reservationId(),
                 event.postingRequestId(),
-                event.sourceAccountId(),
-                event.destinationAccountId()).strip();
+                event.effectiveAt()).strip();
     }
 
     private static Transfer transfer() {

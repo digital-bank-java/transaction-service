@@ -52,6 +52,13 @@ not a public customer-facing balance mutation API. Governed Kafka transport is
 implemented here for account-reservation commands/facts and ledger-posting
 commands/facts, using repo-owned safe defaults with environment overrides.
 
+The outbound `ledger.posting.requested.v1` payload is shaped so Ledger Service
+can map it directly to `PostLedgerEntryCommand`: it carries the versioned
+envelope, transaction and reservation correlation fields, a deterministic
+description, ISO-8601 `effectiveAt`, currency, and explicit `debitLines` /
+`creditLines` arrays derived from the transfer source account, destination
+account, and amount.
+
 `POST /internal/v1/transfer-workflows` requires a bearer JWT with the
 `transfer.internal` scope and a `sub` claim present in the configured
 `transaction.transfer.authorization.allowed-subjects` allowlist. Missing or

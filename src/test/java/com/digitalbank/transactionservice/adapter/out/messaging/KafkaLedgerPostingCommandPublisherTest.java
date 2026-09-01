@@ -64,6 +64,21 @@ class KafkaLedgerPostingCommandPublisherTest {
         assertThat(outbox.failureMessage).contains("broker unavailable");
     }
 
+    @Test
+    void serializesApprovedLedgerCommandContractWhenOutboxPayloadMissing() {
+        var event = requestedEvent();
+        var kafkaTemplate = new RecordingKafkaTemplate(false);
+        var outbox = new RecordingOutbox(event);
+        var objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
+
+        publisher(kafkaTemplate, outbox).publishReadyEvents();
+
+        assertThat(kafkaTemplate.records).singleElement().satisfies(record -> {
+            assertThat(objectMapper.readTree(record.value()))
+                    .isEqualTo(objectMapper.readTree(expectedJson(event)));
+        });
+    }
+
     private static KafkaLedgerPostingCommandPublisher publisher(
             KafkaTemplate<String, String> kafkaTemplate, LedgerCommandEventOutbox outbox) {
         var environment = new MockEnvironment()
@@ -87,17 +102,31 @@ class KafkaLedgerPostingCommandPublisherTest {
 
     private static LedgerPostingRequestedEvent requestedEvent() {
         var transfer = Transfer.request(
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                UUID.randomUUID(),
+                UUID.fromString("11111111-1111-1111-1111-111111111111"),
+                UUID.fromString("22222222-2222-2222-2222-222222222222"),
+                UUID.fromString("33333333-3333-3333-3333-333333333333"),
                 new BigDecimal("12.50"),
                 "AED",
-                "correlation-001",
+                "transfer-correlation-001",
                 "transfer-request-001",
                 "reservation-request-001",
                 "posting-request-001");
-        transfer.accountReservationCreated("reservation-request-001", "reservation-001", "correlation-001");
+        transfer.accountReservationCreated("reservation-request-001", "reservation-001", "transfer-correlation-001");
         return LedgerPostingRequestedEvent.from(transfer);
+    }
+
+    private static String expectedJson(LedgerPostingRequestedEvent event) {
+        return ("{\"eventId\":\"%s\",\"eventType\":\"LedgerPostingRequested.v1\",\"schemaVersion\":\"1.0.0\","
+                + "\"producer\":\"transaction-service\",\"occurredAt\":\"%s\",\"aggregateId\":\"posting-request-001\","
+                + "\"correlationId\":\"transfer-correlation-001\",\"causationId\":\"reservation-request-001\","
+                + "\"transactionId\":\"11111111-1111-1111-1111-111111111111\","
+                + "\"reservationRequestId\":\"reservation-request-001\",\"reservationId\":\"reservation-001\","
+                + "\"postingRequestId\":\"posting-request-001\","
+                + "\"description\":\"Transfer posting for transfer-request-001\",\"currency\":\"AED\","
+                + "\"effectiveAt\":\"%s\",\"debitLines\":[{\"accountId\":\"22222222-2222-2222-2222-222222222222\","
+                + "\"amount\":\"12.50\"}],\"creditLines\":[{\"accountId\":\"33333333-3333-3333-3333-333333333333\","
+                + "\"amount\":\"12.50\"}]}")
+                .formatted(event.eventId(), event.occurredAt(), event.occurredAt());
     }
 
     private static final class RecordingKafkaTemplate extends KafkaTemplate<String, String> {

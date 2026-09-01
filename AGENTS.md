@@ -41,7 +41,10 @@ must stay independent of controllers, Helm templates, Kafka, and database
 entities. The process manager coordinates through input messages and output
 action/repository ports. The internal HTTP adapter at
 `/internal/v1/transfer-workflows` is for workflow orchestration only and is not
-a customer-facing balance mutation API.
+a customer-facing balance mutation API. The outbound
+`ledger.posting.requested.v1` contract must remain directly mappable to Ledger
+Service `PostLedgerEntryCommand`, including `description`, `effectiveAt`,
+`debitLines`, and `creditLines`.
 
 ## Local Commands
 
