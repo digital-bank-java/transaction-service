@@ -1,6 +1,7 @@
 package com.digitalbank.transactionservice.application.port.out;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.digitalbank.transactionservice.domain.Transfer;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,6 +24,14 @@ class LedgerPostingRequestedEventTest {
                         .getBytes(StandardCharsets.UTF_8)));
         assertThat(objectMapper.readTree(objectMapper.writeValueAsString(event)))
                 .isEqualTo(objectMapper.readTree(expectedJson(event)));
+    }
+
+    @Test
+    void rejectsLineAmountWithMoreThanFourDecimalPlaces() {
+        assertThatThrownBy(() -> new LedgerPostingRequestedEvent.Line(
+                        UUID.randomUUID(), "1.00001"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("amount");
     }
 
     private static String expectedJson(LedgerPostingRequestedEvent event) {

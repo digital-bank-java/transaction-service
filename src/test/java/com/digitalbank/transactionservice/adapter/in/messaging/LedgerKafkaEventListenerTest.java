@@ -51,6 +51,37 @@ class LedgerKafkaEventListenerTest {
     }
 
     @Test
+    void mapsInternalErrorFailedFactToProcessManager() {
+        var payload = failedPayload();
+        payload.put("failureCode", "INTERNAL_ERROR");
+
+        listener.onLedgerEvent(record(FAILED_TOPIC, payload));
+
+        assertThat(processManager.lastEvent).isInstanceOf(LedgerPostingFailed.class);
+    }
+
+    @Test
+    void rejectsFailedFactWithOverlongReason() {
+        var payload = failedPayload();
+        payload.put("failureReason", "x".repeat(501));
+
+        assertThatThrownBy(() -> listener.onLedgerEvent(record(FAILED_TOPIC, payload)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("failureReason");
+    }
+
+    @Test
+    void rejectsCompletedFactWithOutOfContractLineAmount() {
+        var payload = completedPayload();
+        ((com.fasterxml.jackson.databind.node.ObjectNode) payload.withArray("lines").get(0))
+                .put("amount", "1.00001");
+
+        assertThatThrownBy(() -> listener.onLedgerEvent(record(COMPLETED_TOPIC, payload)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("amount");
+    }
+
+    @Test
     void rejectsTopicThatDoesNotMatchPayloadEventType() {
         var payload = failedPayload();
 

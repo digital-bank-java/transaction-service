@@ -13,6 +13,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 final class LedgerEventPayloads {
 
     private static final String PRODUCER = "ledger-service";
+    private static final String POSITIVE_DECIMAL_PATTERN = "^(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,4})?$";
 
     private LedgerEventPayloads() {}
 
@@ -36,14 +37,18 @@ final class LedgerEventPayloads {
         if (!text(payload, "aggregateId").equals(text(payload, "postingRequestId"))) {
             throw new LedgerEventValidationException("aggregateId must match postingRequestId");
         }
-        oneOf(payload, "failureCode", Set.of("VALIDATION_ERROR", "CONFLICT", "ACCOUNTING_ERROR"));
+        oneOf(payload, "failureCode", Set.of("VALIDATION_ERROR", "CONFLICT", "ACCOUNTING_ERROR", "INTERNAL_ERROR"));
+        var failureReason = text(payload, "failureReason");
+        if (failureReason.length() > 500) {
+            throw new LedgerEventValidationException("failureReason must not exceed 500 characters");
+        }
         return new LedgerPostingFailed(
                 uuid(payload, "transactionId"),
                 text(payload, "eventId"),
                 text(payload, "correlationId"),
                 text(payload, "causationId"),
                 text(payload, "postingRequestId"),
-                text(payload, "failureReason"));
+                failureReason);
     }
 
     private static JsonNode common(ConsumerRecord<String, String> record, ObjectMapper mapper, String expectedEventType) {
@@ -110,8 +115,13 @@ final class LedgerEventPayloads {
                 throw new LedgerEventValidationException("Unsupported lineType");
             }
             types.add(type);
+            var amount = text(line, "amount");
+            if (!amount.matches(POSITIVE_DECIMAL_PATTERN)) {
+                throw new LedgerEventValidationException(
+                        "ledger line amount must be a positive decimal with no more than 4 decimal places");
+            }
             try {
-                if (new BigDecimal(text(line, "amount")).signum() <= 0) {
+                if (new BigDecimal(amount).signum() <= 0) {
                     throw new LedgerEventValidationException("ledger line amount must be positive");
                 }
             } catch (NumberFormatException exception) {

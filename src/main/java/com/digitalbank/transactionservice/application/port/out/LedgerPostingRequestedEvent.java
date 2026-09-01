@@ -33,6 +33,7 @@ public record LedgerPostingRequestedEvent(
     public static final String EVENT_TYPE = "LedgerPostingRequested.v1";
     public static final String SCHEMA_VERSION = "1.0.0";
     public static final String PRODUCER = "transaction-service";
+    private static final String POSITIVE_DECIMAL_PATTERN = "^(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,4})?$";
 
     public LedgerPostingRequestedEvent {
         Objects.requireNonNull(eventId, "eventId must not be null");
@@ -100,6 +101,10 @@ public record LedgerPostingRequestedEvent(
         public Line {
             Objects.requireNonNull(accountId, "accountId must not be null");
             amount = requireText(amount, "amount");
+            if (!amount.matches(POSITIVE_DECIMAL_PATTERN)) {
+                throw new IllegalArgumentException(
+                        "amount must be a positive decimal with no more than 4 decimal places");
+            }
             if (new BigDecimal(amount).signum() <= 0) {
                 throw new IllegalArgumentException("amount must be positive");
             }
