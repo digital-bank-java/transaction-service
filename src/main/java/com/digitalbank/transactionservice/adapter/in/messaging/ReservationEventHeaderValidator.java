@@ -54,7 +54,7 @@ final class ReservationEventHeaderValidator {
         requiredText(payload, "causationId");
         requiredText(payload, "reservationRequestId");
         if (!expectedEventType.equals(requiredText(payload, "eventType"))) {
-            throw new IllegalArgumentException("Unexpected reservation event type");
+            throw new IllegalArgumentException("Unexpected reservation event type for topic");
         }
         if (!"1.0.0".equals(requiredText(payload, "schemaVersion"))) {
             throw new IllegalArgumentException("Unsupported reservation schema version");

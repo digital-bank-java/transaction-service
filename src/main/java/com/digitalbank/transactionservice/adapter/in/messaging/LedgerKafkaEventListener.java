@@ -5,6 +5,7 @@ import com.digitalbank.transactionservice.application.port.in.LedgerPostingFaile
 import com.digitalbank.transactionservice.application.service.TransferProcessManager;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.env.Environment;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -19,6 +20,7 @@ class LedgerKafkaEventListener {
     private final String completedTopic;
     private final String failedTopic;
 
+    @Autowired
     LedgerKafkaEventListener(ObjectMapper objectMapper, TransferProcessManager processManager, Environment environment) {
         this(
                 objectMapper,

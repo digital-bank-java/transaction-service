@@ -1,6 +1,7 @@
 package com.digitalbank.transactionservice.adapter.in.messaging;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.digitalbank.transactionservice.application.port.in.AccountReservationAccepted;
 import com.digitalbank.transactionservice.application.port.in.AccountReservationExpired;
 import com.digitalbank.transactionservice.application.port.in.AccountReservationRejected;
@@ -61,6 +62,21 @@ class ReservationKafkaEventListenerTest {
         listener.onReservationEvent(record("account.reservation.rejected.v1", payload));
 
         assertThat(processManager.lastEvent).isInstanceOf(AccountReservationRejected.class);
+    }
+
+    @Test
+    void rejectsTopicThatDoesNotMatchPayloadEventType() {
+        var payload = common("AccountReservationRejected.v1");
+        payload.put("sourceAccountId", UUID.randomUUID().toString());
+        payload.put("destinationAccountId", UUID.randomUUID().toString());
+        payload.put("amount", "12.50");
+        payload.put("currency", "AED");
+        payload.put("rejectionCode", "INSUFFICIENT_AVAILABLE_BALANCE");
+        payload.put("rejectionReason", "Available balance is lower than requested amount.");
+
+        assertThatThrownBy(() -> listener.onReservationEvent(record("account.reservation.accepted.v1", payload)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("topic");
     }
 
     @Test
