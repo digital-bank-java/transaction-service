@@ -13,17 +13,33 @@ The current repository provides a deployable Spring Boot service foundation:
 - Builds a non-root container image and deploys through a hardened Helm chart.
 - Supports the `8084` service port supplied by runtime configuration.
 
-There are no transfer APIs or transaction side effects in this bootstrap.
+There are no transfer APIs or transaction side effects in this repository yet.
+
+## Transfer Domain Foundation
+
+The repository now contains a framework-free transfer lifecycle model for the
+future application layer:
+
+- A transfer starts in `PENDING`.
+- A pending transfer may become `COMPLETED` or `FAILED`.
+- A completed transfer may become `REVERSED`.
+- Repeating the same terminal event is idempotent.
+- Any other state transition is rejected.
+
+This model is deterministic and has no HTTP, database, Kafka, or Spring
+dependencies. It is a domain boundary, not a complete transfer workflow.
 
 ## Planned Transfer And Saga Behavior
 
-The following capabilities are planned and are not implemented here:
+The following capabilities remain planned and are not implemented here:
 
-- Transfer commands and transfer orchestration.
+- HTTP transfer commands and inbound adapters.
 - Account reservation coordination.
-- Ledger posting or balance mutation.
-- Kafka producers, consumers, topics, or event contracts owned by this service.
+- Ledger completion and failure event consumption.
+- Kafka producers, consumers, topics, outbox, inbox, or event contracts owned
+  by this service.
 - PostgreSQL persistence and saga state management.
+- Saga orchestration and compensating actions.
 
 Do not document or add an endpoint, integration, topic, database, or gateway
 route for these capabilities until the corresponding work is approved and

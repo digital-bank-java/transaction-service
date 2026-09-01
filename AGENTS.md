@@ -14,10 +14,11 @@ The current implementation owns only:
 - Config Server client configuration.
 - Actuator health and Kubernetes probe endpoints.
 - Maven, Docker, and Helm delivery foundations.
+- A framework-free transfer lifecycle model with deterministic state transitions.
 
 It must not yet implement transfer endpoints, account reservation calls,
 ledger posting, Kafka producers or consumers, PostgreSQL persistence, or saga
-orchestration.
+orchestration. The lifecycle model does not perform any of those operations.
 
 ## Architecture And Naming
 
