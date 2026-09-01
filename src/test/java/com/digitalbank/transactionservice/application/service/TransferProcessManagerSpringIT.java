@@ -2,6 +2,7 @@ package com.digitalbank.transactionservice.application.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.digitalbank.transactionservice.TestSecurityConfig;
 import com.digitalbank.transactionservice.application.port.in.RequestTransferCommand;
 import com.digitalbank.transactionservice.application.port.out.TransferWorkflowRepository;
 import com.digitalbank.transactionservice.domain.TransferStatus;
@@ -11,12 +12,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Import;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 @SpringBootTest
 @Testcontainers
+@Import(TestSecurityConfig.class)
 class TransferProcessManagerSpringIT {
 
     @Container

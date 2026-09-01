@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
+import com.digitalbank.transactionservice.TestSecurityConfig;
 import java.util.ArrayList;
 import java.util.UUID;
 import java.util.concurrent.CyclicBarrier;
@@ -12,12 +13,14 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -26,6 +29,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 @AutoConfigureMockMvc
 @Testcontainers
 @TestPropertySource(properties = "spring.cloud.config.enabled=false")
+@Import(TestSecurityConfig.class)
 class TransferWorkflowPostgresApiIT {
 
     @Container
@@ -73,6 +77,7 @@ class TransferWorkflowPostgresApiIT {
                 futures.add(executor.submit(() -> {
                     barrier.await();
                     return mockMvc.perform(post("/internal/v1/transfer-workflows")
+                                    .header(HttpHeaders.AUTHORIZATION, TestSecurityConfig.AUTHORIZED_AUTHORIZATION)
                                     .contentType(APPLICATION_JSON)
                                     .content(request))
                             .andReturn();

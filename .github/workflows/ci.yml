@@ -147,6 +147,8 @@ jobs:
                           "spring.datasource.username": "transaction_service",
                           "spring.datasource.password": "transaction_service",
                           "spring.datasource.driver-class-name": "org.postgresql.Driver",
+                          "spring.security.oauth2.resourceserver.jwt.issuer-uri": "https://issuer.test.internal",
+                          "spring.security.oauth2.resourceserver.jwt.jwk-set-uri": "http://host.docker.internal:8888/jwks",
                           "spring.jpa.hibernate.ddl-auto": "validate",
                           "spring.jpa.open-in-view": "false",
                       },

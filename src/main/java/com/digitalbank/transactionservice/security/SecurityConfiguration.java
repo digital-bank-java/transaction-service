@@ -1,0 +1,45 @@
+package com.digitalbank.transactionservice.security;
+
+import static org.springframework.security.config.Customizer.withDefaults;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.SecurityFilterChain;
+
+@Configuration
+class SecurityConfiguration {
+
+    @Bean
+    SecurityFilterChain securityFilterChain(
+            HttpSecurity http,
+            TransferAuthorizationManager transferAuthorizationManager,
+            TransferSecurityProblemSupport problemSupport)
+            throws Exception {
+        http.csrf(AbstractHttpConfigurer::disable)
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(authorize -> authorize
+                        .requestMatchers(
+                                "/actuator/health/**",
+                                "/actuator/info",
+                                "/error",
+                                "/v3/api-docs/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html")
+                        .permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/internal/v1/transfer-workflows")
+                        .access(transferAuthorizationManager)
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/internal/v1/transfer-workflows/**")
+                        .access(transferAuthorizationManager)
+                        .anyRequest()
+                        .denyAll())
+                .exceptionHandling(exceptions ->
+                        exceptions.authenticationEntryPoint(problemSupport).accessDeniedHandler(problemSupport))
+                .oauth2ResourceServer(oauth2 -> oauth2.authenticationEntryPoint(problemSupport)
+                        .accessDeniedHandler(problemSupport)
+                        .jwt(withDefaults()));
+        return http.build();
+    }
+}

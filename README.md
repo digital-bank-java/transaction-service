@@ -15,7 +15,7 @@ The current repository provides a deployable Spring Boot service foundation:
 - Owns a transport-neutral transfer saga/process-manager application boundary.
 - Exposes an internal-only HTTP command endpoint at
   `/internal/v1/transfer-workflows` for requesting or replaying transfer
-  workflows.
+  workflows, protected by bearer JWT authentication and subject authorization.
 - Persists transfer workflow state, consumed-event status, and deterministic
   next actions with optimistic locking.
 
@@ -53,11 +53,16 @@ adapters may map these messages to governed platform contracts, including
 `AccountReservationCreated`, `LedgerPostingCompleted`, and
 `LedgerPostingFailed`.
 
-This repository does not yet implement authentication or authorization for
-internal callers of `POST /internal/v1/transfer-workflows`. Until dedicated
-security work is tracked and delivered, access to this endpoint must be
-constrained by platform boundary controls such as private networking, gateway
-policy, or service-to-service enforcement outside this service.
+`POST /internal/v1/transfer-workflows` requires a bearer JWT with the
+`transfer.internal` scope and a `sub` claim present in the configured
+`transaction.transfer.authorization.allowed-subjects` allowlist. Missing or
+invalid bearer credentials return `401` Problem Details; authenticated callers
+without the required scope or subject authorization return `403` Problem
+Details. An empty allowlist denies all transfer workflow requests, so a
+deployment must configure the trusted service subjects explicitly. JWT issuer
+validation and optional JWK-set configuration are supplied by Config Server or
+runtime overrides; this service does not accept headers or request-body fields
+as identity evidence.
 
 The PostgreSQL schema contains `transfer_workflows`,
 `transfer_workflow_events`, and `transfer_workflow_actions`. Account Service
@@ -102,6 +107,15 @@ effective runtime configuration, including the application port.
 | --- | --- | --- |
 | `CONFIG_SERVER_URL` | Config Server base URL | `http://localhost:8888` |
 | `SPRING_PROFILES_ACTIVE` | Runtime environment profile | Spring `default` profile |
+| `TRANSFER_ALLOWED_SUBJECTS` | Comma-separated JWT `sub` values authorized to request transfer workflows | empty, deny all |
+
+The resource-server trust settings are:
+
+| Property | Purpose | Default |
+| --- | --- | --- |
+| `spring.security.oauth2.resourceserver.jwt.issuer-uri` | Required JWT issuer trust anchor | none |
+| `spring.security.oauth2.resourceserver.jwt.jwk-set-uri` | Optional explicit JWK set endpoint | none |
+| `transaction.transfer.authorization.allowed-subjects` | Trusted JWT subjects; normally set through `TRANSFER_ALLOWED_SUBJECTS` or Config Server | empty, deny all |
 
 Config Server must expose the `transaction-service` configuration. Do not
 commit secrets or environment-specific credentials to this repository, image,

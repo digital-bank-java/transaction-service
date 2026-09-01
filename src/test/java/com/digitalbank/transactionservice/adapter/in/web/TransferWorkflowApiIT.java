@@ -4,9 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.digitalbank.transactionservice.TestSecurityConfig;
 import com.digitalbank.transactionservice.application.port.out.TransferWorkflowRepository;
 import com.digitalbank.transactionservice.domain.Transfer;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,13 +18,18 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
+@Import(TestSecurityConfig.class)
+@TestPropertySource(properties = "transaction.transfer.authorization.allowed-subjects=transfer-orchestrator")
 class TransferWorkflowApiIT {
 
     private static final String TEST_DATABASE =
@@ -49,7 +56,8 @@ class TransferWorkflowApiIT {
         var destinationAccountId = UUID.randomUUID();
 
         var firstResponse = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
-                                "/internal/v1/transfer-workflows")
+                                    "/internal/v1/transfer-workflows")
+                        .header(HttpHeaders.AUTHORIZATION, TestSecurityConfig.AUTHORIZED_AUTHORIZATION)
                         .contentType(APPLICATION_JSON)
                         .content(
                                 """
@@ -89,7 +97,8 @@ class TransferWorkflowApiIT {
                 .hasValueSatisfying(transfer -> assertThat(transfer.correlationId()).isEqualTo("api-correlation-" + scenarioId));
 
         var replayResponse = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
-                                "/internal/v1/transfer-workflows")
+                                    "/internal/v1/transfer-workflows")
+                        .header(HttpHeaders.AUTHORIZATION, TestSecurityConfig.AUTHORIZED_AUTHORIZATION)
                         .contentType(APPLICATION_JSON)
                         .content(
                                 """
@@ -135,6 +144,7 @@ class TransferWorkflowApiIT {
 
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
                                 "/internal/v1/transfer-workflows")
+                        .header(HttpHeaders.AUTHORIZATION, TestSecurityConfig.AUTHORIZED_AUTHORIZATION)
                         .contentType(APPLICATION_JSON)
                         .content(
                                 """
@@ -162,6 +172,7 @@ class TransferWorkflowApiIT {
 
         var conflictResponse = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
                                 "/internal/v1/transfer-workflows")
+                        .header(HttpHeaders.AUTHORIZATION, TestSecurityConfig.AUTHORIZED_AUTHORIZATION)
                         .contentType(APPLICATION_JSON)
                         .content(
                                 """
@@ -194,6 +205,88 @@ class TransferWorkflowApiIT {
     }
 
     @Test
+    void rejectsUnauthenticatedRequestWithoutCreatingWorkflow() throws Exception {
+        var transferId = UUID.randomUUID();
+
+        var response = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
+                                "/internal/v1/transfer-workflows")
+                        .contentType(APPLICATION_JSON)
+                        .content(requestBody(transferId)))
+                .andReturn()
+                .getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        assertThat(response.getHeader(HttpHeaders.WWW_AUTHENTICATE)).isEqualTo("Bearer");
+        assertThat(objectMapper.readTree(response.getContentAsString()).path("type").asText())
+                .isEqualTo("urn:digital-bank:transaction:authentication-required");
+        assertThat(workflowRepository.findById(transferId)).isEmpty();
+    }
+
+    @Test
+    void rejectsUnauthenticatedWorkflowLookup() throws Exception {
+        mockMvc.perform(get("/internal/v1/transfer-workflows/{transferId}", UUID.randomUUID()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, "Bearer"));
+    }
+
+    @Test
+    void rejectsAuthenticatedRequestFromUnapprovedSubjectWithoutCreatingWorkflow() throws Exception {
+        var transferId = UUID.randomUUID();
+
+        var response = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
+                                "/internal/v1/transfer-workflows")
+                        .header(HttpHeaders.AUTHORIZATION, TestSecurityConfig.UNAUTHORIZED_SUBJECT_AUTHORIZATION)
+                        .contentType(APPLICATION_JSON)
+                        .content(requestBody(transferId)))
+                .andReturn()
+                .getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(objectMapper.readTree(response.getContentAsString()).path("type").asText())
+                .isEqualTo("urn:digital-bank:transaction:access-denied");
+        assertThat(workflowRepository.findById(transferId)).isEmpty();
+    }
+
+    @Test
+    void rejectsAuthenticatedRequestWithoutTransferScopeWithoutCreatingWorkflow() throws Exception {
+        var transferId = UUID.randomUUID();
+
+        var response = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
+                                "/internal/v1/transfer-workflows")
+                        .header(HttpHeaders.AUTHORIZATION, TestSecurityConfig.INSUFFICIENT_SCOPE_AUTHORIZATION)
+                        .contentType(APPLICATION_JSON)
+                        .content(requestBody(transferId)))
+                .andReturn()
+                .getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(workflowRepository.findById(transferId)).isEmpty();
+    }
+
+    private static String requestBody(UUID transferId) {
+        return """
+                {
+                  "transferId": "%s",
+                  "sourceAccountId": "%s",
+                  "destinationAccountId": "%s",
+                  "amount": 25.25,
+                  "currency": "AED",
+                  "correlationId": "security-correlation-%s",
+                  "transferRequestId": "security-transfer-request-%s",
+                  "reservationRequestId": "security-reservation-request-%s",
+                  "postingRequestId": "security-posting-request-%s"
+                }
+                """.formatted(
+                transferId,
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                transferId,
+                transferId,
+                transferId,
+                transferId);
+    }
+
+    @Test
     @Transactional
     void getsPersistedTransferWorkflowThroughHttp() throws Exception {
         var transferId = UUID.randomUUID();
@@ -212,7 +305,8 @@ class TransferWorkflowApiIT {
 
         assertThat(workflowRepository.saveIfAbsent(transfer)).isNotNull();
 
-        mockMvc.perform(get("/internal/v1/transfer-workflows/{transferId}", transferId))
+        mockMvc.perform(get("/internal/v1/transfer-workflows/{transferId}", transferId)
+                        .header(HttpHeaders.AUTHORIZATION, TestSecurityConfig.AUTHORIZED_AUTHORIZATION))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(APPLICATION_JSON))
                 .andExpect(jsonPath("$.transferId").value(transferId.toString()))
