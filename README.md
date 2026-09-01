@@ -12,46 +12,67 @@ The current repository provides a deployable Spring Boot service foundation:
 - Exposes Actuator health, liveness, and readiness endpoints.
 - Builds a non-root container image and deploys through a hardened Helm chart.
 - Supports the `8084` service port supplied by runtime configuration.
+- Owns a transport-neutral transfer saga/process-manager application boundary.
+- Persists transfer workflow state, consumed-event status, and deterministic
+  next actions with optimistic locking.
 
-There are no transfer APIs or transaction side effects in this repository yet.
+There is no public transfer API and the service does not directly mutate
+account balances or ledger entries.
 
-## Transfer Domain Foundation
+## Transfer Saga Foundation
 
-The repository now contains a framework-free transfer lifecycle model for the
-future application layer:
+The current transfer workflow boundary supports the first internal-transfer
+coordination slice:
 
-- A transfer starts in `PENDING`.
-- A pending transfer may become `COMPLETED` or `FAILED`.
-- A completed transfer may become `REVERSED`.
-- Repeating the same terminal event is idempotent.
-- Any other state transition is rejected.
+1. `RequestTransfer` creates a `PENDING` workflow and records an account
+   reservation request.
+2. `AccountReservationCreated` advances the workflow to
+   `AWAITING_LEDGER_POSTING` and records a ledger-posting request.
+3. `LedgerPostingCompleted` marks the transfer `COMPLETED`.
+4. `LedgerPostingFailed` marks it `FAILED` and records an explicit reservation
+   release action.
+5. `AccountReservationRejected` marks a pending transfer `FAILED`.
 
-This model is deterministic and has no HTTP, database, Kafka, or Spring
-dependencies. It is a domain boundary, not a complete transfer workflow.
+Every message carries a transfer id, correlation id, and event/request id.
+Duplicate messages are idempotent. Ledger outcomes received before reservation
+success are durably deferred and replayed after the reservation event arrives.
+Workflow rows use optimistic locking, while inbox event ids and deterministic
+action ids prevent duplicate work during retries.
 
-## Planned Transfer And Saga Behavior
+The application boundary uses typed Java records and ports. It intentionally
+does not add HTTP endpoints, Kafka dependencies, concrete topics, schema
+registry configuration, or transport adapters. Future adapters may map these
+messages to governed platform contracts, including
+`AccountReservationCreated`, `LedgerPostingCompleted`, and
+`LedgerPostingFailed`.
 
-The following capabilities remain planned and are not implemented here:
+The PostgreSQL schema contains `transfer_workflows`,
+`transfer_workflow_events`, and `transfer_workflow_actions`. Account Service
+remains the owner of reservations and account projections; Ledger Service
+remains the owner of immutable financial postings.
 
-- HTTP transfer commands and inbound adapters.
-- Account reservation coordination.
-- Ledger completion and failure event consumption.
-- Kafka producers, consumers, topics, outbox, inbox, or event contracts owned
-  by this service.
-- PostgreSQL persistence and saga state management.
-- Saga orchestration and compensating actions.
+## Remaining Transfer Scope
 
-Do not document or add an endpoint, integration, topic, database, or gateway
-route for these capabilities until the corresponding work is approved and
-tracked.
+The following capabilities remain outside this foundation:
+
+- HTTP transfer API and inbound adapters.
+- Account reservation execution and account balance projection updates.
+- Ledger posting execution and immutable ledger entry ownership.
+- Kafka producers/consumers, concrete topics, schema registry wiring, and
+  outbox publication.
+- Reversal orchestration, reconciliation, and end-to-end SIT event evidence.
+
+Do not add an endpoint, gateway route, topic, or transport schema here until
+the corresponding work is approved and tracked.
 
 ## Responsibilities And Boundaries
 
-Current responsibilities are limited to the service bootstrap, runtime health,
-configuration-client integration, packaging, and deployment foundation.
+Current responsibilities include the service bootstrap, runtime health,
+configuration-client integration, transfer workflow orchestration, durable
+workflow state, packaging, and deployment foundation.
 
-The service does not currently own customer data, account data, ledger entries,
-transfer execution, Kafka infrastructure, persistence, or secrets. The
+The service does not own customer data, account data, ledger entries, account
+balance projections, Kafka infrastructure, or secrets. The
 configuration repository is a separate repository owned by the Config Server
 workflow; this repository only consumes configuration exposed for
 `transaction-service`.
@@ -264,14 +285,6 @@ curl --fail http://localhost:18084/actuator/health/readiness
 The chart deploys one internal `ClusterIP` service with a read-only root
 filesystem, non-root security context, no privilege escalation, no Linux
 capabilities, and an `emptyDir` mount for `/tmp`.
-
-## Planned Scope
-
-Keep business workflows out of the bootstrap boundary. Future work may add
-transfer commands, account reservation coordination, ledger posting events,
-Kafka consumers/producers, persistence, and saga state management. Until
-those tasks are approved, this repository should remain a deployable health
-and configuration foundation.
 
 ## Contribution Workflow
 

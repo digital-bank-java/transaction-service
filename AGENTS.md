@@ -15,10 +15,13 @@ The current implementation owns only:
 - Actuator health and Kubernetes probe endpoints.
 - Maven, Docker, and Helm delivery foundations.
 - A framework-free transfer lifecycle model with deterministic state transitions.
+- Transfer saga/process-manager application boundary and workflow state.
+- PostgreSQL persistence for transfer workflows, inbox records, and actions.
 
-It must not yet implement transfer endpoints, account reservation calls,
-ledger posting, Kafka producers or consumers, PostgreSQL persistence, or saga
-orchestration. The lifecycle model does not perform any of those operations.
+It must not implement public transfer endpoints, direct account balance or
+ledger-entry mutation, Kafka producers or consumers, concrete topic/schema
+wiring, or transport adapters in this foundation. Account Service owns account
+reservations and projections; Ledger Service owns immutable postings.
 
 ## Architecture And Naming
 
@@ -29,9 +32,10 @@ orchestration. The lifecycle model does not perform any of those operations.
 - In-cluster Config Server: `http://config-server:8888`.
 - Image: `digital-bank-java/transaction-service:<tag>`.
 
-Follow the platform's hexagonal architecture when business behavior is added.
-Keep domain and application rules out of controllers, Helm templates, and CI
-workflows.
+Follow the platform's hexagonal architecture. Domain and application rules
+must stay independent of controllers, Helm templates, Kafka, and database
+entities. The process manager coordinates through input messages and output
+action/repository ports.
 
 ## Local Commands
 
@@ -54,6 +58,10 @@ and must not depend on a running external service.
   `*IntegrationTests.java` during `verify`.
 - The bootstrap health contract is verified at a random HTTP port and must
   report `UP` from `/actuator/health`.
+- Process-manager tests must cover legal/illegal transitions, duplicate and
+  out-of-order events, correlation mismatches, and retry-safe actions.
+- PostgreSQL persistence tests use Testcontainers and verify optimistic locking,
+  inbox durability, and action durability.
 - Use `./mvnw --batch-mode --no-transfer-progress verify` as the local quality
   gate.
 

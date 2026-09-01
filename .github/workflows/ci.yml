@@ -92,6 +92,7 @@ jobs:
         run: |
           cleanup() {
             docker rm --force transaction-service-ci > /dev/null 2>&1 || true
+            docker rm --force transaction-service-postgres-ci > /dev/null 2>&1 || true
             if [[ -n "${mock_server_pid:-}" ]]; then
               kill "${mock_server_pid}" > /dev/null 2>&1 || true
             fi
@@ -101,6 +102,31 @@ jobs:
           test "$(docker image inspect \
             --format '{{.Config.User}}' \
             digital-bank-java/transaction-service:ci)" = "10001:10001"
+
+          docker run --detach \
+            --name transaction-service-postgres-ci \
+            --publish 5432:5432 \
+            --env POSTGRES_DB=transaction_service_ci \
+            --env POSTGRES_USER=transaction_service \
+            --env POSTGRES_PASSWORD=transaction_service \
+            postgres:16-alpine
+
+          database_ready=false
+          for attempt in {1..30}; do
+            if docker exec transaction-service-postgres-ci \
+              pg_isready \
+              --username transaction_service \
+              --dbname transaction_service_ci > /dev/null 2>&1; then
+              database_ready=true
+              break
+            fi
+            sleep 1
+          done
+
+          if [[ "${database_ready}" != "true" ]]; then
+            docker logs transaction-service-postgres-ci
+            exit 1
+          fi
 
           python3 - <<'PY' &
           import json
@@ -117,6 +143,12 @@ jobs:
                       "name": "ci",
                       "source": {
                           "server.port": 8084,
+                          "spring.datasource.url": "jdbc:postgresql://host.docker.internal:5432/transaction_service_ci",
+                          "spring.datasource.username": "transaction_service",
+                          "spring.datasource.password": "transaction_service",
+                          "spring.datasource.driver-class-name": "org.postgresql.Driver",
+                          "spring.jpa.hibernate.ddl-auto": "validate",
+                          "spring.jpa.open-in-view": "false",
                       },
                   }
               ],
