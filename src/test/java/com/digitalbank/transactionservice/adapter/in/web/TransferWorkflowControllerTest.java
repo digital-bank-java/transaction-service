@@ -10,6 +10,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.digitalbank.transactionservice.application.port.out.TransferWorkflowRepository;
+import com.digitalbank.transactionservice.application.port.out.TransferCreatedEvent;
+import com.digitalbank.transactionservice.application.port.out.TransferCreatedEventOutbox;
 import com.digitalbank.transactionservice.application.port.out.WorkflowAction;
 import com.digitalbank.transactionservice.application.port.out.WorkflowActionRepository;
 import com.digitalbank.transactionservice.application.port.out.WorkflowEventInbox;
@@ -34,7 +36,10 @@ class TransferWorkflowControllerTest {
     @BeforeEach
     void setUp() {
         var controller = new TransferWorkflowController(new TransferProcessManager(
-                new InMemoryWorkflowRepository(), new InMemoryWorkflowEventInbox(), new InMemoryWorkflowActionRepository()));
+                new InMemoryWorkflowRepository(),
+                new InMemoryWorkflowEventInbox(),
+                new InMemoryWorkflowActionRepository(),
+                new InMemoryTransferCreatedEventOutbox()));
         var validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
@@ -373,6 +378,14 @@ class TransferWorkflowControllerTest {
         @Override
         public List<WorkflowEventRecord> findDeferredByTransferId(UUID transferId) {
             return List.of();
+        }
+    }
+
+    private static final class InMemoryTransferCreatedEventOutbox implements TransferCreatedEventOutbox {
+
+        @Override
+        public boolean recordIfAbsent(TransferCreatedEvent event) {
+            return true;
         }
     }
 

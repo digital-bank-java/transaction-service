@@ -7,6 +7,8 @@ import com.digitalbank.transactionservice.application.port.in.AccountReservation
 import com.digitalbank.transactionservice.application.port.in.LedgerPostingCompleted;
 import com.digitalbank.transactionservice.application.port.in.RequestTransferCommand;
 import com.digitalbank.transactionservice.application.port.out.TransferWorkflowRepository;
+import com.digitalbank.transactionservice.application.port.out.TransferCreatedEvent;
+import com.digitalbank.transactionservice.application.port.out.TransferCreatedEventOutbox;
 import com.digitalbank.transactionservice.application.port.out.WorkflowEventInbox;
 import com.digitalbank.transactionservice.application.service.TransferProcessManager;
 import com.digitalbank.transactionservice.application.service.WorkflowResult;
@@ -19,6 +21,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -58,6 +61,9 @@ class TransferWorkflowPersistenceIT {
     private WorkflowEventInbox eventInbox;
 
     @Autowired
+    private TransferCreatedEventOutbox transferCreatedEventOutbox;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
@@ -74,6 +80,7 @@ class TransferWorkflowPersistenceIT {
     @Test
     void persistsWorkflowActionAndReloadableState() {
         processManager.requestTransfer(command());
+        processManager.requestTransfer(command());
 
         var stored = workflowRepository.findById(transferId);
 
@@ -83,6 +90,11 @@ class TransferWorkflowPersistenceIT {
             assertThat(transfer.version()).isZero();
         });
         assertThat(count("transfer_workflow_actions", transferId)).isEqualTo(1);
+        assertThat(countByColumn("transfer_created_event_outbox", "aggregate_id", transferId)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+                "select event_type from transfer_created_event_outbox where aggregate_id = ?",
+                String.class,
+                transferId)).isEqualTo("TransferCreated.v1");
     }
 
     @Test
@@ -102,6 +114,26 @@ class TransferWorkflowPersistenceIT {
             assertThat(results.stream().mapToInt(result -> result.actions().size()).sum()).isEqualTo(1);
             assertThat(countByPrimaryKey("transfer_workflows", transferId)).isEqualTo(1);
             assertThat(count("transfer_workflow_actions", transferId)).isEqualTo(1);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void concurrentOutboxClaimsDeliverAnEventToOnlyOneWorker() throws Exception {
+        processManager.requestTransfer(command());
+        var start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            List<Future<List<TransferCreatedEvent>>> claims = List.of(
+                    executor.submit(() -> claimAfter(start)),
+                    executor.submit(() -> claimAfter(start)));
+            start.countDown();
+
+            var claimed = List.of(claims.get(0).get(), claims.get(1).get());
+
+            assertThat(claimed.stream().mapToInt(List::size).sum()).isEqualTo(1);
+            assertThat(claimed.stream().filter(events -> !events.isEmpty())).hasSize(1);
         } finally {
             executor.shutdownNow();
         }
@@ -162,6 +194,13 @@ class TransferWorkflowPersistenceIT {
         return processManager.requestTransfer(command());
     }
 
+    private List<TransferCreatedEvent> claimAfter(CountDownLatch start)
+            throws InterruptedException {
+        start.await();
+        return transferCreatedEventOutbox.claimReady(
+                1, Instant.now(), UUID.randomUUID(), Instant.now().plusSeconds(60));
+    }
+
     private int count(String table, UUID id) {
         return jdbcTemplate.queryForObject(
                 "select count(*) from " + table + " where transfer_id = ?", Integer.class, id);
@@ -170,5 +209,10 @@ class TransferWorkflowPersistenceIT {
     private int countByPrimaryKey(String table, UUID id) {
         return jdbcTemplate.queryForObject(
                 "select count(*) from " + table + " where id = ?", Integer.class, id);
+    }
+
+    private int countByColumn(String table, String column, UUID id) {
+        return jdbcTemplate.queryForObject(
+                "select count(*) from " + table + " where " + column + " = ?", Integer.class, id);
     }
 }

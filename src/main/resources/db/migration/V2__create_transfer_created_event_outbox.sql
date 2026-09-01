@@ -1,0 +1,36 @@
+create table transfer_created_event_outbox (
+    event_id uuid not null,
+    event_type varchar(100) not null,
+    schema_version varchar(20) not null,
+    producer varchar(100) not null,
+    occurred_at timestamp with time zone not null,
+    aggregate_id uuid not null,
+    correlation_id varchar(100) not null,
+    causation_id varchar(100) not null,
+    transaction_id uuid not null,
+    source_account_id uuid not null,
+    destination_account_id uuid not null,
+    amount numeric(19, 4) not null,
+    currency varchar(3) not null,
+    transfer_request_id varchar(100) not null,
+    reservation_request_id varchar(100) not null,
+    posting_request_id varchar(100) not null,
+    status varchar(40) not null,
+    event_status varchar(20) not null,
+    attempt_count integer not null default 0,
+    available_at timestamp with time zone not null,
+    published_at timestamp with time zone,
+    last_error varchar(2000),
+    json_payload text not null,
+    created_at timestamp with time zone not null default now(),
+    constraint pk_transfer_created_event_outbox primary key (event_id),
+    constraint uq_transfer_created_event_outbox_aggregate_type unique (aggregate_id, event_type),
+    constraint ck_transfer_created_event_outbox_type check (event_type = 'TransferCreated.v1'),
+    constraint ck_transfer_created_event_outbox_schema check (schema_version = '1.0.0'),
+    constraint ck_transfer_created_event_outbox_amount check (amount > 0),
+    constraint ck_transfer_created_event_outbox_status check (event_status in ('PENDING', 'PUBLISHED', 'FAILED')),
+    constraint ck_transfer_created_event_outbox_attempts check (attempt_count >= 0)
+);
+
+create index idx_transfer_created_event_outbox_ready
+    on transfer_created_event_outbox (event_status, available_at, created_at);
