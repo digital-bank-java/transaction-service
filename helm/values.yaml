@@ -12,6 +12,14 @@ runtime:
   profile: default
   configServerUrl: http://config-server:8888
 
+kafka:
+  bootstrapServers: ""
+  securityProtocol: SASL_SSL
+
+reservationEvents:
+  enabled: false
+  sitPlaintextEnabled: false
+
 service:
   type: ClusterIP
   port: 8084

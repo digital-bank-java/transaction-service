@@ -1,3 +1,11 @@
 runtime:
   profile: sit
   configServerUrl: http://config-server:8888
+
+kafka:
+  bootstrapServers: kafka.digital-bank-sit.svc.cluster.local:9092
+  securityProtocol: PLAINTEXT
+
+reservationEvents:
+  enabled: true
+  sitPlaintextEnabled: true
