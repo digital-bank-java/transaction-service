@@ -18,6 +18,9 @@ The current repository provides a deployable Spring Boot service foundation:
   workflows, protected by bearer JWT authentication and subject authorization.
 - Persists transfer workflow state, consumed-event status, and deterministic
   next actions with optimistic locking.
+- Publishes governed Kafka ledger-posting request commands through a durable
+  outbox and consumes governed ledger posting outcome facts with idempotent
+  inbox handling when ledger transport is enabled.
 
 There is no public transfer API and the service does not directly mutate
 account balances or ledger entries.
@@ -42,16 +45,12 @@ success are durably deferred and replayed after the reservation event arrives.
 Workflow rows use optimistic locking, while inbox event ids and deterministic
 action ids prevent duplicate work during retries.
 
-The application boundary uses typed Java records and ports. The only inbound
-transport implemented here is the internal workflow endpoint
-`POST /internal/v1/transfer-workflows`. It starts or replays orchestration
-state and returns workflow/actions for internal callers; it is not a public
-customer-facing balance mutation API. Kafka dependencies, concrete topics,
-schema registry configuration, account reservation transport, ledger transport,
-gateway routing, and other transport adapters remain out of scope. Future
-adapters may map these messages to governed platform contracts, including
-`AccountReservationCreated`, `LedgerPostingCompleted`, and
-`LedgerPostingFailed`.
+The application boundary uses typed Java records and ports. The internal
+workflow endpoint `POST /internal/v1/transfer-workflows` starts or replays
+orchestration state and returns workflow/actions for internal callers; it is
+not a public customer-facing balance mutation API. Governed Kafka transport is
+implemented here for account-reservation commands/facts and ledger-posting
+commands/facts, using repo-owned safe defaults with environment overrides.
 
 `POST /internal/v1/transfer-workflows` requires a bearer JWT with the
 `transfer.internal` scope and a `sub` claim present in the configured
@@ -77,8 +76,6 @@ The following capabilities remain outside this foundation:
   public transfer APIs.
 - Account reservation execution and account balance projection updates.
 - Ledger posting execution and immutable ledger entry ownership.
-- Kafka producers/consumers, concrete topics, schema registry wiring, and
-  outbox publication.
 - Public customer-facing transfer APIs and gateway-exposed balance mutation
   routes.
 - Reversal orchestration, reconciliation, and end-to-end SIT event evidence.
@@ -108,6 +105,10 @@ effective runtime configuration, including the application port.
 | `CONFIG_SERVER_URL` | Config Server base URL | `http://localhost:8888` |
 | `SPRING_PROFILES_ACTIVE` | Runtime environment profile | Spring `default` profile |
 | `TRANSFER_ALLOWED_SUBJECTS` | Comma-separated JWT `sub` values authorized to request transfer workflows | empty, deny all |
+| `TRANSACTION_EVENTS_LEDGER_ENABLED` | Enable governed ledger Kafka publisher/listener adapters | `false` |
+| `LEDGER_POSTING_REQUESTED_TOPIC` | Ledger posting request command topic | `ledger.posting.requested.v1` |
+| `LEDGER_POSTING_COMPLETED_TOPIC` | Ledger posting completion fact topic | `ledger.posting.completed.v1` |
+| `LEDGER_POSTING_FAILED_TOPIC` | Ledger posting failure fact topic | `ledger.posting.failed.v1` |
 
 The resource-server trust settings are:
 

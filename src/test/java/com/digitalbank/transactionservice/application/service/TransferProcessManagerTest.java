@@ -10,9 +10,13 @@ import com.digitalbank.transactionservice.application.port.in.AccountReservation
 import com.digitalbank.transactionservice.application.port.in.LedgerPostingCompleted;
 import com.digitalbank.transactionservice.application.port.in.LedgerPostingFailed;
 import com.digitalbank.transactionservice.application.port.in.RequestTransferCommand;
+import com.digitalbank.transactionservice.application.port.out.ReservationCommandEvent;
+import com.digitalbank.transactionservice.application.port.out.ReservationCommandEventOutbox;
 import com.digitalbank.transactionservice.application.port.out.TransferCreatedEvent;
 import com.digitalbank.transactionservice.application.port.out.TransferCreatedEventOutbox;
 import com.digitalbank.transactionservice.application.port.out.TransferWorkflowRepository;
+import com.digitalbank.transactionservice.application.port.out.LedgerCommandEvent;
+import com.digitalbank.transactionservice.application.port.out.LedgerCommandEventOutbox;
 import com.digitalbank.transactionservice.application.port.out.WorkflowAction;
 import com.digitalbank.transactionservice.application.port.out.WorkflowActionRepository;
 import com.digitalbank.transactionservice.application.port.out.WorkflowEventInbox;
@@ -21,6 +25,7 @@ import com.digitalbank.transactionservice.domain.Transfer;
 import com.digitalbank.transactionservice.domain.TransferConflictException;
 import com.digitalbank.transactionservice.domain.TransferStatus;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -45,6 +50,7 @@ class TransferProcessManagerTest {
     private InMemoryEventInbox events;
     private InMemoryActionRepository actions;
     private InMemoryTransferCreatedEventOutbox outbox;
+    private InMemoryLedgerCommandEventOutbox ledgerOutbox;
     private TransferProcessManager processManager;
 
     @BeforeEach
@@ -53,7 +59,9 @@ class TransferProcessManagerTest {
         events = new InMemoryEventInbox();
         actions = new InMemoryActionRepository();
         outbox = new InMemoryTransferCreatedEventOutbox();
-        processManager = new TransferProcessManager(workflows, events, actions, outbox);
+        ledgerOutbox = new InMemoryLedgerCommandEventOutbox();
+        processManager = new TransferProcessManager(workflows, events, actions, outbox,
+                new InMemoryReservationCommandEventOutbox(), ledgerOutbox);
     }
 
     @Test
@@ -142,6 +150,13 @@ class TransferProcessManagerTest {
         assertThat(result.transfer().status()).isEqualTo(TransferStatus.AWAITING_LEDGER_POSTING);
         assertThat(result.actions()).hasSize(1);
         assertThat(result.actions().getFirst().actionId()).isEqualTo("ledger-posting:" + POSTING_REQUEST_ID);
+        assertThat(ledgerOutbox.events()).singleElement().satisfies(event -> {
+            assertThat(event.eventType()).isEqualTo("LedgerPostingRequested.v1");
+            assertThat(event.aggregateId()).isEqualTo(POSTING_REQUEST_ID);
+            assertThat(event.postingRequestId()).isEqualTo(POSTING_REQUEST_ID);
+            assertThat(event.reservationRequestId()).isEqualTo(RESERVATION_REQUEST_ID);
+            assertThat(event.reservationId()).isEqualTo("reservation-001");
+        });
     }
 
     @Test
@@ -415,6 +430,52 @@ class TransferProcessManagerTest {
         }
 
         List<WorkflowAction> actions() {
+            return values;
+        }
+    }
+
+    private static final class InMemoryReservationCommandEventOutbox implements ReservationCommandEventOutbox {
+        @Override
+        public boolean recordIfAbsent(ReservationCommandEvent event) {
+            return false;
+        }
+
+        @Override
+        public List<ReservationCommandEvent> claimReady(int limit, Instant now, UUID claimToken, Instant leaseUntil) {
+            return List.of();
+        }
+
+        @Override
+        public void markPublished(ReservationCommandEvent event, UUID claimToken, Instant publishedAt) {}
+
+        @Override
+        public void markFailed(ReservationCommandEvent event, UUID claimToken, String error, Instant retryAt) {}
+    }
+
+    private static final class InMemoryLedgerCommandEventOutbox implements LedgerCommandEventOutbox {
+        private final List<LedgerCommandEvent> values = new ArrayList<>();
+
+        @Override
+        public boolean recordIfAbsent(LedgerCommandEvent event) {
+            if (values.stream().anyMatch(existing -> existing.eventId().equals(event.eventId()))) {
+                return false;
+            }
+            values.add(event);
+            return true;
+        }
+
+        @Override
+        public List<LedgerCommandEvent> claimReady(int limit, Instant now, UUID claimToken, Instant leaseUntil) {
+            return List.of();
+        }
+
+        @Override
+        public void markPublished(LedgerCommandEvent event, UUID claimToken, Instant publishedAt) {}
+
+        @Override
+        public void markFailed(LedgerCommandEvent event, UUID claimToken, String error, Instant retryAt) {}
+
+        List<LedgerCommandEvent> events() {
             return values;
         }
     }

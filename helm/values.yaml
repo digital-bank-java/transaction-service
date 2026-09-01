@@ -20,6 +20,13 @@ reservationEvents:
   enabled: false
   sitPlaintextEnabled: false
 
+ledgerEvents:
+  enabled: false
+  sitPlaintextEnabled: false
+  requestedTopic: ledger.posting.requested.v1
+  completedTopic: ledger.posting.completed.v1
+  failedTopic: ledger.posting.failed.v1
+
 service:
   type: ClusterIP
   port: 8084

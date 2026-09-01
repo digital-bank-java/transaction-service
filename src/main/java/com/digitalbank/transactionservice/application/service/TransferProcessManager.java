@@ -14,6 +14,8 @@ import com.digitalbank.transactionservice.application.port.out.RequestLedgerPost
 import com.digitalbank.transactionservice.application.port.out.TransferCreatedEvent;
 import com.digitalbank.transactionservice.application.port.out.TransferCreatedEventOutbox;
 import com.digitalbank.transactionservice.application.port.out.TransferWorkflowRepository;
+import com.digitalbank.transactionservice.application.port.out.LedgerCommandEventOutbox;
+import com.digitalbank.transactionservice.application.port.out.LedgerPostingRequestedEvent;
 import com.digitalbank.transactionservice.application.port.out.AccountReservationReleaseRequestedEvent;
 import com.digitalbank.transactionservice.application.port.out.AccountReservationRequestedEvent;
 import com.digitalbank.transactionservice.application.port.out.ReservationCommandEventOutbox;
@@ -43,6 +45,7 @@ public class TransferProcessManager {
     private final WorkflowActionRepository actionRepository;
     private final TransferCreatedEventOutbox transferCreatedEventOutbox;
     private final ReservationCommandEventOutbox reservationCommandEventOutbox;
+    private final LedgerCommandEventOutbox ledgerCommandEventOutbox;
 
     public TransferProcessManager(
             TransferWorkflowRepository workflowRepository,
@@ -50,7 +53,7 @@ public class TransferProcessManager {
             WorkflowActionRepository actionRepository,
             TransferCreatedEventOutbox transferCreatedEventOutbox) {
         this(workflowRepository, eventInbox, actionRepository, transferCreatedEventOutbox,
-                new NoOpReservationCommandEventOutbox());
+                new NoOpReservationCommandEventOutbox(), new NoOpLedgerCommandEventOutbox());
     }
 
     @Autowired
@@ -59,7 +62,8 @@ public class TransferProcessManager {
             WorkflowEventInbox eventInbox,
             WorkflowActionRepository actionRepository,
             TransferCreatedEventOutbox transferCreatedEventOutbox,
-            ReservationCommandEventOutbox reservationCommandEventOutbox) {
+            ReservationCommandEventOutbox reservationCommandEventOutbox,
+            LedgerCommandEventOutbox ledgerCommandEventOutbox) {
         this.workflowRepository = Objects.requireNonNull(workflowRepository, "workflowRepository must not be null");
         this.eventInbox = Objects.requireNonNull(eventInbox, "eventInbox must not be null");
         this.actionRepository = Objects.requireNonNull(actionRepository, "actionRepository must not be null");
@@ -67,6 +71,8 @@ public class TransferProcessManager {
                 transferCreatedEventOutbox, "transferCreatedEventOutbox must not be null");
         this.reservationCommandEventOutbox = Objects.requireNonNull(
                 reservationCommandEventOutbox, "reservationCommandEventOutbox must not be null");
+        this.ledgerCommandEventOutbox = Objects.requireNonNull(
+                ledgerCommandEventOutbox, "ledgerCommandEventOutbox must not be null");
     }
 
     @Transactional
@@ -304,6 +310,8 @@ public class TransferProcessManager {
             reservationCommandEventOutbox.recordIfAbsent(AccountReservationRequestedEvent.from(transfer));
         } else if (action instanceof ReleaseAccountReservation) {
             reservationCommandEventOutbox.recordIfAbsent(AccountReservationReleaseRequestedEvent.from(transfer));
+        } else if (action instanceof RequestLedgerPosting) {
+            ledgerCommandEventOutbox.recordIfAbsent(LedgerPostingRequestedEvent.from(transfer));
         }
     }
 
@@ -333,6 +341,27 @@ public class TransferProcessManager {
 
         @Override
         public void markFailed(com.digitalbank.transactionservice.application.port.out.ReservationCommandEvent event,
+                UUID claimToken, String error, java.time.Instant retryAt) {}
+    }
+
+    private static final class NoOpLedgerCommandEventOutbox implements LedgerCommandEventOutbox {
+        @Override
+        public boolean recordIfAbsent(com.digitalbank.transactionservice.application.port.out.LedgerCommandEvent event) {
+            return false;
+        }
+
+        @Override
+        public List<com.digitalbank.transactionservice.application.port.out.LedgerCommandEvent> claimReady(
+                int limit, java.time.Instant now, UUID claimToken, java.time.Instant leaseUntil) {
+            return List.of();
+        }
+
+        @Override
+        public void markPublished(com.digitalbank.transactionservice.application.port.out.LedgerCommandEvent event,
+                UUID claimToken, java.time.Instant publishedAt) {}
+
+        @Override
+        public void markFailed(com.digitalbank.transactionservice.application.port.out.LedgerCommandEvent event,
                 UUID claimToken, String error, java.time.Instant retryAt) {}
     }
 }

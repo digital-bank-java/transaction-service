@@ -19,11 +19,12 @@ The current implementation owns only:
   replays.
 - Transfer saga/process-manager application boundary and workflow state.
 - PostgreSQL persistence for transfer workflows, inbox records, and actions.
+- Governed Kafka transport for account-reservation and ledger-posting workflow
+  messages, backed by transactional outbox and durable inbox persistence.
 
 It must not implement public transfer endpoints, direct account balance or
-ledger-entry mutation, Kafka producers or consumers, concrete topic/schema
-wiring, account reservation transport, ledger transport, or gateway routing in
-this foundation. Account Service owns account reservations and projections;
+ledger-entry mutation, public gateway routing, or ownership of reservations or
+ledger postings. Account Service owns account reservations and projections;
 Ledger Service owns immutable postings.
 
 ## Architecture And Naming
