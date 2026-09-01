@@ -72,6 +72,28 @@ class TransferProcessManagerTest {
     }
 
     @Test
+    void findsExistingTransferWorkflowWithoutCreatingActions() {
+        processManager.requestTransfer(command());
+
+        var found = processManager.findTransferWorkflow(TRANSFER_ID);
+
+        assertThat(found).hasValueSatisfying(result -> {
+            assertThat(result.transfer().id()).isEqualTo(TRANSFER_ID);
+            assertThat(result.transfer().status()).isEqualTo(TransferStatus.PENDING);
+            assertThat(result.actions()).isEmpty();
+        });
+        assertThat(actions.actions()).hasSize(1);
+    }
+
+    @Test
+    void returnsEmptyWhenTransferWorkflowIsNotFound() {
+        var found = processManager.findTransferWorkflow(TRANSFER_ID);
+
+        assertThat(found).isEmpty();
+        assertThat(actions.actions()).isEmpty();
+    }
+
+    @Test
     void conflictingTransferRequestIsRejected() {
         processManager.requestTransfer(command());
 
@@ -154,6 +176,18 @@ class TransferProcessManagerTest {
     }
 
     @Test
+    void usesAtomicWorkflowCreationBeforeReadingAnExistingRequest() {
+        var repository = new AtomicCreationOnlyWorkflowRepository();
+        var manager = new TransferProcessManager(repository, events, actions);
+
+        var result = manager.requestTransfer(command());
+
+        assertThat(result.transfer().id()).isEqualTo(TRANSFER_ID);
+        assertThat(result.actions()).hasSize(1);
+        assertThat(repository.saveIfAbsentCalled).isTrue();
+    }
+
+    @Test
     void duplicateReservationEventWithNewEventIdDoesNotRepeatLedgerAction() {
         reserve();
 
@@ -226,6 +260,27 @@ class TransferProcessManagerTest {
         public Transfer save(Transfer transfer) {
             values.put(transfer.id(), transfer);
             return transfer;
+        }
+    }
+
+    private static final class AtomicCreationOnlyWorkflowRepository implements TransferWorkflowRepository {
+
+        private boolean saveIfAbsentCalled;
+
+        @Override
+        public Optional<Transfer> findById(UUID transferId) {
+            throw new AssertionError("requestTransfer must use atomic creation before lookup");
+        }
+
+        @Override
+        public Transfer saveIfAbsent(Transfer transfer) {
+            saveIfAbsentCalled = true;
+            return transfer;
+        }
+
+        @Override
+        public Transfer save(Transfer transfer) {
+            throw new AssertionError("requestTransfer must not save the initial workflow twice");
         }
     }
 

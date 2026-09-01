@@ -120,7 +120,7 @@ jobs:
               database_ready=true
               break
             fi
-            sleep 1
+            sleep 2
           done
 
           if [[ "${database_ready}" != "true" ]]; then

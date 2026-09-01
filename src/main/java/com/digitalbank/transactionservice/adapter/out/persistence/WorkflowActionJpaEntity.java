@@ -16,6 +16,20 @@ import java.util.UUID;
 @Table(name = "transfer_workflow_actions")
 class WorkflowActionJpaEntity {
 
+    record Values(
+            String actionId,
+            UUID transferId,
+            String actionType,
+            String correlationId,
+            UUID sourceAccountId,
+            UUID destinationAccountId,
+            BigDecimal amount,
+            String currency,
+            String requestId,
+            String reservationRequestId,
+            String postingRequestId,
+            String reservationId) {}
+
     @Id
     @Column(name = "action_id", nullable = false, length = 200)
     private String actionId;
@@ -86,6 +100,55 @@ class WorkflowActionJpaEntity {
         } else {
             throw new IllegalArgumentException("Unsupported workflow action: " + action.getClass());
         }
+    }
+
+    static Values values(WorkflowAction action) {
+        if (action instanceof RequestAccountReservation request) {
+            return new Values(
+                    action.actionId(),
+                    action.transferId(),
+                    "REQUEST_ACCOUNT_RESERVATION",
+                    action.correlationId(),
+                    request.sourceAccountId(),
+                    null,
+                    request.amount(),
+                    request.currency(),
+                    request.reservationRequestId(),
+                    request.reservationRequestId(),
+                    null,
+                    null);
+        }
+        if (action instanceof RequestLedgerPosting request) {
+            return new Values(
+                    action.actionId(),
+                    action.transferId(),
+                    "REQUEST_LEDGER_POSTING",
+                    action.correlationId(),
+                    request.sourceAccountId(),
+                    request.destinationAccountId(),
+                    request.amount(),
+                    request.currency(),
+                    request.postingRequestId(),
+                    null,
+                    request.postingRequestId(),
+                    request.reservationId());
+        }
+        if (action instanceof ReleaseAccountReservation release) {
+            return new Values(
+                    action.actionId(),
+                    action.transferId(),
+                    "RELEASE_ACCOUNT_RESERVATION",
+                    action.correlationId(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    release.actionId(),
+                    null,
+                    null,
+                    release.reservationId());
+        }
+        throw new IllegalArgumentException("Unsupported workflow action: " + action.getClass());
     }
 
     String actionId() { return actionId; }

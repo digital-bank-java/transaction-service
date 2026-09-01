@@ -13,6 +13,9 @@ The current repository provides a deployable Spring Boot service foundation:
 - Builds a non-root container image and deploys through a hardened Helm chart.
 - Supports the `8084` service port supplied by runtime configuration.
 - Owns a transport-neutral transfer saga/process-manager application boundary.
+- Exposes an internal-only HTTP command endpoint at
+  `/internal/v1/transfer-workflows` for requesting or replaying transfer
+  workflows.
 - Persists transfer workflow state, consumed-event status, and deterministic
   next actions with optimistic locking.
 
@@ -39,12 +42,22 @@ success are durably deferred and replayed after the reservation event arrives.
 Workflow rows use optimistic locking, while inbox event ids and deterministic
 action ids prevent duplicate work during retries.
 
-The application boundary uses typed Java records and ports. It intentionally
-does not add HTTP endpoints, Kafka dependencies, concrete topics, schema
-registry configuration, or transport adapters. Future adapters may map these
-messages to governed platform contracts, including
+The application boundary uses typed Java records and ports. The only inbound
+transport implemented here is the internal workflow endpoint
+`POST /internal/v1/transfer-workflows`. It starts or replays orchestration
+state and returns workflow/actions for internal callers; it is not a public
+customer-facing balance mutation API. Kafka dependencies, concrete topics,
+schema registry configuration, account reservation transport, ledger transport,
+gateway routing, and other transport adapters remain out of scope. Future
+adapters may map these messages to governed platform contracts, including
 `AccountReservationCreated`, `LedgerPostingCompleted`, and
 `LedgerPostingFailed`.
+
+This repository does not yet implement authentication or authorization for
+internal callers of `POST /internal/v1/transfer-workflows`. Until dedicated
+security work is tracked and delivered, access to this endpoint must be
+constrained by platform boundary controls such as private networking, gateway
+policy, or service-to-service enforcement outside this service.
 
 The PostgreSQL schema contains `transfer_workflows`,
 `transfer_workflow_events`, and `transfer_workflow_actions`. Account Service
@@ -55,11 +68,14 @@ remains the owner of immutable financial postings.
 
 The following capabilities remain outside this foundation:
 
-- HTTP transfer API and inbound adapters.
+- Additional inbound adapters beyond the internal workflow endpoint, including
+  public transfer APIs.
 - Account reservation execution and account balance projection updates.
 - Ledger posting execution and immutable ledger entry ownership.
 - Kafka producers/consumers, concrete topics, schema registry wiring, and
   outbox publication.
+- Public customer-facing transfer APIs and gateway-exposed balance mutation
+  routes.
 - Reversal orchestration, reconciliation, and end-to-end SIT event evidence.
 
 Do not add an endpoint, gateway route, topic, or transport schema here until

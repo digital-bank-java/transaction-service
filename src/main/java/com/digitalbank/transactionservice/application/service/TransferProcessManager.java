@@ -21,6 +21,7 @@ import com.digitalbank.transactionservice.domain.TransferStatus;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -58,6 +59,12 @@ public class TransferProcessManager {
 
         var action = RequestAccountReservation.forTransfer(persisted);
         return result(persisted, record(action));
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<WorkflowResult> findTransferWorkflow(UUID transferId) {
+        Objects.requireNonNull(transferId, "transferId must not be null");
+        return workflowRepository.findById(transferId).map(TransferProcessManager::result);
     }
 
     @Transactional
@@ -210,7 +217,7 @@ public class TransferProcessManager {
                 || !transfer.transferRequestId().equals(command.transferRequestId())
                 || !transfer.reservationRequestId().equals(command.reservationRequestId())
                 || !transfer.postingRequestId().equals(command.postingRequestId())) {
-            throw new TransferConflictException("transfer request conflicts with existing workflow");
+            throw new TransferConflictException("Transfer workflow request conflicts with existing data");
         }
     }
 
