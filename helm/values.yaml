@@ -5,12 +5,20 @@ revisionHistoryLimit: 3
 
 image:
   repository: digital-bank-java/transaction-service
-  tag: "0.0.1"
+  tag: "0.0.2"
   pullPolicy: IfNotPresent
 
 runtime:
   profile: default
   configServerUrl: http://config-server:8888
+
+kafka:
+  bootstrapServers: ""
+  securityProtocol: SASL_SSL
+
+reservationEvents:
+  enabled: false
+  sitPlaintextEnabled: false
 
 service:
   type: ClusterIP

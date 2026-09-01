@@ -50,12 +50,37 @@ class TransferTest {
     }
 
     @Test
-    void ledgerFailureFailsTransfer() {
+    void ledgerFailureWaitsForReservationRelease() {
         var transfer = requestedTransfer();
         transfer.accountReservationCreated(
                 "reservation-request-001", "reservation-001", "transfer-correlation-001");
 
         transfer.ledgerPostingFailed("posting-request-001", "transfer-correlation-001");
+
+        assertThat(transfer.status()).isEqualTo(TransferStatus.AWAITING_RESERVATION_RELEASE);
+    }
+
+    @Test
+    void releasedReservationFailsTransferAfterLedgerFailure() {
+        var transfer = requestedTransfer();
+        transfer.accountReservationCreated(
+                "reservation-request-001", "reservation-001", "transfer-correlation-001");
+        transfer.ledgerPostingFailed("posting-request-001", "transfer-correlation-001");
+
+        transfer.accountReservationReleased(
+                "reservation-request-001", "reservation-001", "transfer-correlation-001");
+
+        assertThat(transfer.status()).isEqualTo(TransferStatus.FAILED);
+    }
+
+    @Test
+    void expiredReservationFailsTransferWithoutRelease() {
+        var transfer = requestedTransfer();
+        transfer.accountReservationCreated(
+                "reservation-request-001", "reservation-001", "transfer-correlation-001");
+
+        transfer.accountReservationExpired(
+                "reservation-request-001", "reservation-001", "transfer-correlation-001");
 
         assertThat(transfer.status()).isEqualTo(TransferStatus.FAILED);
     }

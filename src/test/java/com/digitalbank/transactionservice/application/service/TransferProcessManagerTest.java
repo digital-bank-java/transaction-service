@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.digitalbank.transactionservice.application.port.in.AccountReservationCreated;
+import com.digitalbank.transactionservice.application.port.in.AccountReservationExpired;
 import com.digitalbank.transactionservice.application.port.in.AccountReservationRejected;
+import com.digitalbank.transactionservice.application.port.in.AccountReservationReleased;
 import com.digitalbank.transactionservice.application.port.in.LedgerPostingCompleted;
 import com.digitalbank.transactionservice.application.port.in.LedgerPostingFailed;
 import com.digitalbank.transactionservice.application.port.in.RequestTransferCommand;
@@ -165,7 +167,7 @@ class TransferProcessManagerTest {
     }
 
     @Test
-    void ledgerFailureFailsTransferAndReleasesReservation() {
+    void ledgerFailureWaitsForReleaseFactAfterRecordingReleaseAction() {
         reserve();
 
         var result = processManager.handle(new LedgerPostingFailed(
@@ -176,9 +178,40 @@ class TransferProcessManagerTest {
                 POSTING_REQUEST_ID,
                 "unbalanced posting"));
 
-        assertThat(result.transfer().status()).isEqualTo(TransferStatus.FAILED);
+        assertThat(result.transfer().status()).isEqualTo(TransferStatus.AWAITING_RESERVATION_RELEASE);
         assertThat(result.actions()).hasSize(1);
         assertThat(result.actions().getFirst().actionId()).isEqualTo("release-reservation:reservation-001");
+    }
+
+    @Test
+    void releasedReservationCompletesLedgerFailureTransition() {
+        reserve();
+        processManager.handle(new LedgerPostingFailed(
+                TRANSFER_ID,
+                "event-ledger-release-001",
+                CORRELATION_ID,
+                "ledger-event-request-release-001",
+                POSTING_REQUEST_ID,
+                "unbalanced posting"));
+
+        var result = processManager.handle(new AccountReservationReleased(
+                TRANSFER_ID, "event-reservation-released-001", CORRELATION_ID,
+                RESERVATION_REQUEST_ID, "reservation-001"));
+
+        assertThat(result.transfer().status()).isEqualTo(TransferStatus.FAILED);
+        assertThat(result.actions()).isEmpty();
+    }
+
+    @Test
+    void expiredReservationIsTerminalWithoutReleaseAction() {
+        reserve();
+
+        var result = processManager.handle(new AccountReservationExpired(
+                TRANSFER_ID, "event-reservation-expired-001", CORRELATION_ID,
+                RESERVATION_REQUEST_ID, "reservation-001"));
+
+        assertThat(result.transfer().status()).isEqualTo(TransferStatus.FAILED);
+        assertThat(result.actions()).isEmpty();
     }
 
     @Test
