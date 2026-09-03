@@ -65,10 +65,16 @@ account, and amount.
 invalid bearer credentials return `401` Problem Details; authenticated callers
 without the required scope or subject authorization return `403` Problem
 Details. An empty allowlist denies all transfer workflow requests, so a
-deployment must configure the trusted service subjects explicitly. JWT issuer
-validation and optional JWK-set configuration are supplied by Config Server or
-runtime overrides; this service does not accept headers or request-body fields
-as identity evidence.
+deployment must configure the trusted service subjects explicitly. In the
+current SIT foundation, Auth Service signs HMAC-SHA256 tokens. Config Server
+supplies `auth.jwt.issuer=digital-bank-auth`, while the matching base64-encoded
+secret is injected at runtime through `AUTH_JWT_SECRET`; the secret is never
+committed to this repository or the Config Repository. This service does not
+accept headers or request-body fields as identity evidence.
+
+UAT and PROD may use an OIDC issuer and JWK set instead. When
+`spring.security.oauth2.resourceserver.jwt.issuer-uri` is configured, that
+standard issuer/JWK validation path takes precedence over the SIT HMAC fallback.
 
 The PostgreSQL schema contains `transfer_workflows`,
 `transfer_workflow_events`, and `transfer_workflow_actions`. Account Service
@@ -111,6 +117,7 @@ effective runtime configuration, including the application port.
 | --- | --- | --- |
 | `CONFIG_SERVER_URL` | Config Server base URL | `http://localhost:8888` |
 | `SPRING_PROFILES_ACTIVE` | Runtime environment profile | Spring `default` profile |
+| `AUTH_JWT_SECRET` | Base64-encoded HMAC secret shared with Auth Service | unset |
 | `TRANSFER_ALLOWED_SUBJECTS` | Comma-separated JWT `sub` values authorized to request transfer workflows | empty, deny all |
 | `TRANSACTION_EVENTS_LEDGER_ENABLED` | Enable governed ledger Kafka publisher/listener adapters | `false` |
 | `LEDGER_POSTING_REQUESTED_TOPIC` | Ledger posting request command topic | `ledger.posting.requested.v1` |
@@ -121,13 +128,18 @@ The resource-server trust settings are:
 
 | Property | Purpose | Default |
 | --- | --- | --- |
-| `spring.security.oauth2.resourceserver.jwt.issuer-uri` | Required JWT issuer trust anchor | none |
-| `spring.security.oauth2.resourceserver.jwt.jwk-set-uri` | Optional explicit JWK set endpoint | none |
+| `auth.jwt.issuer` | Issuer expected for the current SIT HMAC contract | none |
+| `auth.jwt.secret` | Base64-encoded HMAC secret for the current SIT Auth contract | none |
+| `spring.security.oauth2.resourceserver.jwt.issuer-uri` | OIDC issuer trust anchor for UAT/PROD or another JWK-based deployment | none |
+| `spring.security.oauth2.resourceserver.jwt.jwk-set-uri` | Optional explicit JWK set endpoint; requires `issuer-uri` | none |
 | `transaction.transfer.authorization.allowed-subjects` | Trusted JWT subjects; normally set through `TRANSFER_ALLOWED_SUBJECTS` or Config Server | empty, deny all |
 
 Config Server must expose the `transaction-service` configuration. Do not
 commit secrets or environment-specific credentials to this repository, image,
-or Helm values.
+or Helm values. The SIT Helm values enable the `auth-service-secrets` reference
+and expect the `jwt-secret` key to exist before the deployment is upgraded. A
+local secret may be created from an ignored input or secret manager according
+to the platform deployment procedure.
 
 ## Environments
 
