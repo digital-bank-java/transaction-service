@@ -1,10 +1,13 @@
 package com.digitalbank.transactionservice.security;
 
+import java.util.Base64;
+import javax.crypto.spec.SecretKeySpec;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtDecoders;
 import org.springframework.security.oauth2.jwt.JwtValidators;
@@ -15,18 +18,27 @@ class JwtDecoderConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(JwtDecoder.class)
-    @ConditionalOnProperty("spring.security.oauth2.resourceserver.jwt.issuer-uri")
     JwtDecoder jwtDecoder(Environment environment) {
-        String issuerUri = requiredProperty(environment, "spring.security.oauth2.resourceserver.jwt.issuer-uri");
+        String issuerUri = environment.getProperty("spring.security.oauth2.resourceserver.jwt.issuer-uri");
         String jwkSetUri = environment.getProperty("spring.security.oauth2.resourceserver.jwt.jwk-set-uri");
 
-        if (jwkSetUri != null && !jwkSetUri.isBlank()) {
-            var decoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
-            decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(issuerUri));
-            return decoder;
+        if (issuerUri != null && !issuerUri.isBlank()) {
+            if (jwkSetUri != null && !jwkSetUri.isBlank()) {
+                var decoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
+                decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(issuerUri));
+                return decoder;
+            }
+
+            return JwtDecoders.fromIssuerLocation(issuerUri);
         }
 
-        return JwtDecoders.fromIssuerLocation(issuerUri);
+        String secret = requiredProperty(environment, "auth.jwt.secret");
+        String issuer = requiredProperty(environment, "auth.jwt.issuer");
+        var decoder = NimbusJwtDecoder.withSecretKey(new SecretKeySpec(decodeSecret(secret), "HmacSHA256"))
+                .macAlgorithm(MacAlgorithm.HS256)
+                .build();
+        decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(issuer));
+        return decoder;
     }
 
     @Bean
@@ -42,5 +54,17 @@ class JwtDecoderConfiguration {
             throw new IllegalStateException(propertyName + " must be configured");
         }
         return value;
+    }
+
+    private static byte[] decodeSecret(String encodedSecret) {
+        try {
+            byte[] decoded = Base64.getDecoder().decode(encodedSecret);
+            if (decoded.length < 32) {
+                throw new IllegalStateException("auth.jwt.secret must decode to at least 32 bytes");
+            }
+            return decoded;
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalStateException("auth.jwt.secret must be valid base64", exception);
+        }
     }
 }

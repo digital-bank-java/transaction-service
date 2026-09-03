@@ -2,6 +2,10 @@ runtime:
   profile: sit
   configServerUrl: http://config-server:8888
 
+auth:
+  secrets:
+    enabled: true
+
 kafka:
   bootstrapServers: kafka.digital-bank-sit.svc.cluster.local:9092
   securityProtocol: PLAINTEXT

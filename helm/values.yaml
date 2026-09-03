@@ -5,7 +5,7 @@ revisionHistoryLimit: 3
 
 image:
   repository: digital-bank-java/transaction-service
-  tag: "0.0.2"
+  tag: "0.0.3"
   pullPolicy: IfNotPresent
 
 runtime:
@@ -16,6 +16,12 @@ database:
   secretName: postgres
   usernameKey: POSTGRES_USER
   passwordKey: POSTGRES_PASSWORD
+
+auth:
+  secrets:
+    enabled: false
+    name: auth-service-secrets
+    jwtSecretKey: jwt-secret
 
 kafka:
   bootstrapServers: ""
