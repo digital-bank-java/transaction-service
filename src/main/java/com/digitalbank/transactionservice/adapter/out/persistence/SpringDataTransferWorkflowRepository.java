@@ -26,7 +26,7 @@ interface SpringDataTransferWorkflowRepository extends JpaRepository<TransferWor
                 :postingRequestId, :reservationId, :status, :version,
                 current_timestamp, current_timestamp
             )
-            on conflict (id) do nothing
+            on conflict do nothing
             """, nativeQuery = true)
     int insertIfAbsent(
             @Param("id") UUID id,

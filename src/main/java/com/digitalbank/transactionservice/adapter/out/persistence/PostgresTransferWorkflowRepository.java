@@ -30,7 +30,7 @@ class PostgresTransferWorkflowRepository implements TransferWorkflowRepository {
         if (h2) {
             return saveIfAbsentOnH2(transfer);
         }
-        repository.insertIfAbsent(
+        var inserted = repository.insertIfAbsent(
                 transfer.id(),
                 transfer.sourceAccountId(),
                 transfer.destinationAccountId(),
@@ -43,7 +43,18 @@ class PostgresTransferWorkflowRepository implements TransferWorkflowRepository {
                 transfer.reservationId(),
                 transfer.status().name(),
                 transfer.version());
-        return findById(transfer.id())
+        if (inserted == 1) {
+            return findById(transfer.id())
+                    .orElseThrow(() -> new IllegalStateException("Transfer workflow was not persisted: " + transfer.id()));
+        }
+
+        return repository.findById(transfer.id())
+                .or(() -> repository.findByCorrelationIdOrTransferRequestIdOrReservationRequestIdOrPostingRequestId(
+                        transfer.correlationId(),
+                        transfer.transferRequestId(),
+                        transfer.reservationRequestId(),
+                        transfer.postingRequestId()))
+                .map(TransferWorkflowJpaMapper::toDomain)
                 .orElseThrow(() -> new IllegalStateException("Transfer workflow was not persisted: " + transfer.id()));
     }
 
