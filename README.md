@@ -12,30 +12,92 @@ The current repository provides a deployable Spring Boot service foundation:
 - Exposes Actuator health, liveness, and readiness endpoints.
 - Builds a non-root container image and deploys through a hardened Helm chart.
 - Supports the `8084` service port supplied by runtime configuration.
+- Owns a transport-neutral transfer saga/process-manager application boundary.
+- Exposes an internal-only HTTP command endpoint at
+  `/internal/v1/transfer-workflows` for requesting or replaying transfer
+  workflows, protected by bearer JWT authentication and subject authorization.
+- Persists transfer workflow state, consumed-event status, and deterministic
+  next actions with optimistic locking.
+- Publishes governed Kafka ledger-posting request commands through a durable
+  outbox and consumes governed ledger posting outcome facts with idempotent
+  inbox handling when ledger transport is enabled.
 
-There are no transfer APIs or transaction side effects in this bootstrap.
+There is no public transfer API and the service does not directly mutate
+account balances or ledger entries.
 
-## Planned Transfer And Saga Behavior
+## Transfer Saga Foundation
 
-The following capabilities are planned and are not implemented here:
+The current transfer workflow boundary supports the first internal-transfer
+coordination slice:
 
-- Transfer commands and transfer orchestration.
-- Account reservation coordination.
-- Ledger posting or balance mutation.
-- Kafka producers, consumers, topics, or event contracts owned by this service.
-- PostgreSQL persistence and saga state management.
+1. `RequestTransfer` creates a `PENDING` workflow and records an account
+   reservation request.
+2. `AccountReservationCreated` advances the workflow to
+   `AWAITING_LEDGER_POSTING` and records a ledger-posting request.
+3. `LedgerPostingCompleted` marks the transfer `COMPLETED`.
+4. `LedgerPostingFailed` marks it `FAILED` and records an explicit reservation
+   release action.
+5. `AccountReservationRejected` marks a pending transfer `FAILED`.
 
-Do not document or add an endpoint, integration, topic, database, or gateway
-route for these capabilities until the corresponding work is approved and
-tracked.
+Every message carries a transfer id, correlation id, and event/request id.
+Duplicate messages are idempotent. Ledger outcomes received before reservation
+success are durably deferred and replayed after the reservation event arrives.
+Workflow rows use optimistic locking, while inbox event ids and deterministic
+action ids prevent duplicate work during retries.
+
+The application boundary uses typed Java records and ports. The internal
+workflow endpoint `POST /internal/v1/transfer-workflows` starts or replays
+orchestration state and returns workflow/actions for internal callers; it is
+not a public customer-facing balance mutation API. Governed Kafka transport is
+implemented here for account-reservation commands/facts and ledger-posting
+commands/facts, using repo-owned safe defaults with environment overrides.
+
+The outbound `ledger.posting.requested.v1` payload is shaped so Ledger Service
+can map it directly to `PostLedgerEntryCommand`: it carries the versioned
+envelope, transaction and reservation correlation fields, a deterministic
+description, ISO-8601 `effectiveAt`, currency, and explicit `debitLines` /
+`creditLines` arrays derived from the transfer source account, destination
+account, and amount.
+
+`POST /internal/v1/transfer-workflows` requires a bearer JWT with the
+`transfer.internal` scope and a `sub` claim present in the configured
+`transaction.transfer.authorization.allowed-subjects` allowlist. Missing or
+invalid bearer credentials return `401` Problem Details; authenticated callers
+without the required scope or subject authorization return `403` Problem
+Details. An empty allowlist denies all transfer workflow requests, so a
+deployment must configure the trusted service subjects explicitly. JWT issuer
+validation and optional JWK-set configuration are supplied by Config Server or
+runtime overrides; this service does not accept headers or request-body fields
+as identity evidence.
+
+The PostgreSQL schema contains `transfer_workflows`,
+`transfer_workflow_events`, and `transfer_workflow_actions`. Account Service
+remains the owner of reservations and account projections; Ledger Service
+remains the owner of immutable financial postings.
+
+## Remaining Transfer Scope
+
+The following capabilities remain outside this foundation:
+
+- Additional inbound adapters beyond the internal workflow endpoint, including
+  public transfer APIs.
+- Account reservation execution and account balance projection updates.
+- Ledger posting execution and immutable ledger entry ownership.
+- Public customer-facing transfer APIs and gateway-exposed balance mutation
+  routes.
+- Reversal orchestration, reconciliation, and end-to-end SIT event evidence.
+
+Do not add an endpoint, gateway route, topic, or transport schema here until
+the corresponding work is approved and tracked.
 
 ## Responsibilities And Boundaries
 
-Current responsibilities are limited to the service bootstrap, runtime health,
-configuration-client integration, packaging, and deployment foundation.
+Current responsibilities include the service bootstrap, runtime health,
+configuration-client integration, transfer workflow orchestration, durable
+workflow state, packaging, and deployment foundation.
 
-The service does not currently own customer data, account data, ledger entries,
-transfer execution, Kafka infrastructure, persistence, or secrets. The
+The service does not own customer data, account data, ledger entries, account
+balance projections, Kafka infrastructure, or secrets. The
 configuration repository is a separate repository owned by the Config Server
 workflow; this repository only consumes configuration exposed for
 `transaction-service`.
@@ -49,6 +111,19 @@ effective runtime configuration, including the application port.
 | --- | --- | --- |
 | `CONFIG_SERVER_URL` | Config Server base URL | `http://localhost:8888` |
 | `SPRING_PROFILES_ACTIVE` | Runtime environment profile | Spring `default` profile |
+| `TRANSFER_ALLOWED_SUBJECTS` | Comma-separated JWT `sub` values authorized to request transfer workflows | empty, deny all |
+| `TRANSACTION_EVENTS_LEDGER_ENABLED` | Enable governed ledger Kafka publisher/listener adapters | `false` |
+| `LEDGER_POSTING_REQUESTED_TOPIC` | Ledger posting request command topic | `ledger.posting.requested.v1` |
+| `LEDGER_POSTING_COMPLETED_TOPIC` | Ledger posting completion fact topic | `ledger.posting.completed.v1` |
+| `LEDGER_POSTING_FAILED_TOPIC` | Ledger posting failure fact topic | `ledger.posting.failed.v1` |
+
+The resource-server trust settings are:
+
+| Property | Purpose | Default |
+| --- | --- | --- |
+| `spring.security.oauth2.resourceserver.jwt.issuer-uri` | Required JWT issuer trust anchor | none |
+| `spring.security.oauth2.resourceserver.jwt.jwk-set-uri` | Optional explicit JWK set endpoint | none |
+| `transaction.transfer.authorization.allowed-subjects` | Trusted JWT subjects; normally set through `TRANSFER_ALLOWED_SUBJECTS` or Config Server | empty, deny all |
 
 Config Server must expose the `transaction-service` configuration. Do not
 commit secrets or environment-specific credentials to this repository, image,
@@ -248,14 +323,6 @@ curl --fail http://localhost:18084/actuator/health/readiness
 The chart deploys one internal `ClusterIP` service with a read-only root
 filesystem, non-root security context, no privilege escalation, no Linux
 capabilities, and an `emptyDir` mount for `/tmp`.
-
-## Planned Scope
-
-Keep business workflows out of the bootstrap boundary. Future work may add
-transfer commands, account reservation coordination, ledger posting events,
-Kafka consumers/producers, persistence, and saga state management. Until
-those tasks are approved, this repository should remain a deployable health
-and configuration foundation.
 
 ## Contribution Workflow
 

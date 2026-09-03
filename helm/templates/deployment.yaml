@@ -35,6 +35,24 @@ spec:
               value: {{ .Values.runtime.configServerUrl | quote }}
             - name: SPRING_PROFILES_ACTIVE
               value: {{ .Values.runtime.profile | quote }}
+            - name: TRANSACTION_KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.kafka.bootstrapServers | quote }}
+            - name: TRANSACTION_KAFKA_SECURITY_PROTOCOL
+              value: {{ .Values.kafka.securityProtocol | quote }}
+            - name: TRANSACTION_EVENTS_RESERVATION_ENABLED
+              value: {{ .Values.reservationEvents.enabled | quote }}
+            - name: TRANSACTION_EVENTS_RESERVATION_SIT_PLAINTEXT_ENABLED
+              value: {{ .Values.reservationEvents.sitPlaintextEnabled | quote }}
+            - name: TRANSACTION_EVENTS_LEDGER_ENABLED
+              value: {{ .Values.ledgerEvents.enabled | quote }}
+            - name: TRANSACTION_EVENTS_LEDGER_SIT_PLAINTEXT_ENABLED
+              value: {{ .Values.ledgerEvents.sitPlaintextEnabled | quote }}
+            - name: LEDGER_POSTING_REQUESTED_TOPIC
+              value: {{ .Values.ledgerEvents.requestedTopic | quote }}
+            - name: LEDGER_POSTING_COMPLETED_TOPIC
+              value: {{ .Values.ledgerEvents.completedTopic | quote }}
+            - name: LEDGER_POSTING_FAILED_TOPIC
+              value: {{ .Values.ledgerEvents.failedTopic | quote }}
           securityContext:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
           ports:

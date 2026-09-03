@@ -14,10 +14,18 @@ The current implementation owns only:
 - Config Server client configuration.
 - Actuator health and Kubernetes probe endpoints.
 - Maven, Docker, and Helm delivery foundations.
+- A framework-free transfer lifecycle model with deterministic state transitions.
+- An internal-only HTTP endpoint for transfer workflow requests and idempotent
+  replays.
+- Transfer saga/process-manager application boundary and workflow state.
+- PostgreSQL persistence for transfer workflows, inbox records, and actions.
+- Governed Kafka transport for account-reservation and ledger-posting workflow
+  messages, backed by transactional outbox and durable inbox persistence.
 
-It must not yet implement transfer endpoints, account reservation calls,
-ledger posting, Kafka producers or consumers, PostgreSQL persistence, or saga
-orchestration.
+It must not implement public transfer endpoints, direct account balance or
+ledger-entry mutation, public gateway routing, or ownership of reservations or
+ledger postings. Account Service owns account reservations and projections;
+Ledger Service owns immutable postings.
 
 ## Architecture And Naming
 
@@ -28,9 +36,15 @@ orchestration.
 - In-cluster Config Server: `http://config-server:8888`.
 - Image: `digital-bank-java/transaction-service:<tag>`.
 
-Follow the platform's hexagonal architecture when business behavior is added.
-Keep domain and application rules out of controllers, Helm templates, and CI
-workflows.
+Follow the platform's hexagonal architecture. Domain and application rules
+must stay independent of controllers, Helm templates, Kafka, and database
+entities. The process manager coordinates through input messages and output
+action/repository ports. The internal HTTP adapter at
+`/internal/v1/transfer-workflows` is for workflow orchestration only and is not
+a customer-facing balance mutation API. The outbound
+`ledger.posting.requested.v1` contract must remain directly mappable to Ledger
+Service `PostLedgerEntryCommand`, including `description`, `effectiveAt`,
+`debitLines`, and `creditLines`.
 
 ## Local Commands
 
@@ -53,6 +67,10 @@ and must not depend on a running external service.
   `*IntegrationTests.java` during `verify`.
 - The bootstrap health contract is verified at a random HTTP port and must
   report `UP` from `/actuator/health`.
+- Process-manager tests must cover legal/illegal transitions, duplicate and
+  out-of-order events, correlation mismatches, and retry-safe actions.
+- PostgreSQL persistence tests use Testcontainers and verify optimistic locking,
+  inbox durability, and action durability.
 - Use `./mvnw --batch-mode --no-transfer-progress verify` as the local quality
   gate.
 
