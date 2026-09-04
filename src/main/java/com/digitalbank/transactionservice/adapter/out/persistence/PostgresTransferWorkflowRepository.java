@@ -36,10 +36,22 @@ class PostgresTransferWorkflowRepository implements TransferWorkflowRepository {
                 transfer.destinationAccountId(),
                 transfer.amount(),
                 transfer.currency(),
+                transfer.customerId(),
+                transfer.channel(),
+                transfer.destinationClass().name(),
                 transfer.correlationId(),
                 transfer.transferRequestId(),
                 transfer.reservationRequestId(),
                 transfer.postingRequestId(),
+                transfer.riskDecision() == null ? null : transfer.riskDecision().decisionId(),
+                transfer.riskDecision() == null ? transfer.transferRequestId() : transfer.riskDecision().decisionRequestId(),
+                transfer.riskDecision() == null ? "ALLOW" : transfer.riskDecision().outcome().name(),
+                transfer.riskDecision() == null ? null : String.join(",", transfer.riskDecision().reasonCodes()),
+                transfer.riskDecision() == null ? null : transfer.riskDecision().requiredAssurance(),
+                transfer.riskDecision() == null ? null : transfer.riskDecision().challengeType(),
+                transfer.riskDecision() == null ? "legacy" : transfer.riskDecision().policyVersion(),
+                transfer.riskDecision() == null ? null : transfer.riskDecision().issuedAt(),
+                transfer.riskDecision() == null ? null : transfer.riskDecision().expiresAt(),
                 transfer.reservationId(),
                 transfer.status().name(),
                 transfer.version());
@@ -49,22 +61,24 @@ class PostgresTransferWorkflowRepository implements TransferWorkflowRepository {
         }
 
         return repository.findById(transfer.id())
-                .or(() -> repository.findByCorrelationIdOrTransferRequestIdOrReservationRequestIdOrPostingRequestId(
+                .or(() -> repository.findByCorrelationIdOrTransferRequestIdOrReservationRequestIdOrPostingRequestIdOrRiskDecisionRequestId(
                         transfer.correlationId(),
                         transfer.transferRequestId(),
                         transfer.reservationRequestId(),
-                        transfer.postingRequestId()))
+                        transfer.postingRequestId(),
+                        transfer.riskDecision() == null ? transfer.transferRequestId() : transfer.riskDecision().decisionRequestId()))
                 .map(TransferWorkflowJpaMapper::toDomain)
                 .orElseThrow(() -> new IllegalStateException("Transfer workflow was not persisted: " + transfer.id()));
     }
 
     private Transfer saveIfAbsentOnH2(Transfer transfer) {
         var existing = repository.findById(transfer.id())
-                .or(() -> repository.findByCorrelationIdOrTransferRequestIdOrReservationRequestIdOrPostingRequestId(
+                .or(() -> repository.findByCorrelationIdOrTransferRequestIdOrReservationRequestIdOrPostingRequestIdOrRiskDecisionRequestId(
                         transfer.correlationId(),
                         transfer.transferRequestId(),
                         transfer.reservationRequestId(),
-                        transfer.postingRequestId()));
+                        transfer.postingRequestId(),
+                        transfer.riskDecision() == null ? transfer.transferRequestId() : transfer.riskDecision().decisionRequestId()));
         if (existing.isPresent()) {
             return TransferWorkflowJpaMapper.toDomain(existing.orElseThrow());
         }

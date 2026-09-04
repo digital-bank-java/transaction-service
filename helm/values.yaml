@@ -23,6 +23,15 @@ auth:
     name: auth-service-secrets
     jwtSecretKey: jwt-secret
 
+risk:
+  policyVersion: transfer-risk-policy-2026-09
+  decisionTtl: PT5M
+  highValueThresholds:
+    AED: "10000"
+    USD: "10000"
+  stepUpDestinationClasses: INTERNATIONAL
+  declinedDestinationClasses: ""
+
 kafka:
   bootstrapServers: ""
   securityProtocol: SASL_SSL

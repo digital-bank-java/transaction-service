@@ -1,5 +1,6 @@
 package com.digitalbank.transactionservice.application.port.in;
 
+import com.digitalbank.transactionservice.risk.TransferDestinationClass;
 import java.math.BigDecimal;
 import java.util.Objects;
 import java.util.UUID;
@@ -13,7 +14,37 @@ public record RequestTransferCommand(
         String correlationId,
         String transferRequestId,
         String reservationRequestId,
-        String postingRequestId) {
+        String postingRequestId,
+        String customerId,
+        String channel,
+        TransferDestinationClass destinationClass,
+        String decisionRequestId) {
+
+    public RequestTransferCommand(
+            UUID transferId,
+            UUID sourceAccountId,
+            UUID destinationAccountId,
+            BigDecimal amount,
+            String currency,
+            String correlationId,
+            String transferRequestId,
+            String reservationRequestId,
+            String postingRequestId) {
+        this(
+                transferId,
+                sourceAccountId,
+                destinationAccountId,
+                amount,
+                currency,
+                correlationId,
+                transferRequestId,
+                reservationRequestId,
+                postingRequestId,
+                "system",
+                "INTERNAL",
+                TransferDestinationClass.INTERNAL,
+                transferRequestId);
+    }
 
     public RequestTransferCommand {
         Objects.requireNonNull(transferId, "transferId must not be null");
@@ -28,6 +59,10 @@ public record RequestTransferCommand(
         transferRequestId = requireText(transferRequestId, "transferRequestId");
         reservationRequestId = requireText(reservationRequestId, "reservationRequestId");
         postingRequestId = requireText(postingRequestId, "postingRequestId");
+        customerId = requireText(customerId, "customerId");
+        channel = requireText(channel, "channel").toUpperCase();
+        destinationClass = Objects.requireNonNull(destinationClass, "destinationClass must not be null");
+        decisionRequestId = requireText(decisionRequestId, "decisionRequestId");
     }
 
     private static String requireCurrency(String value) {

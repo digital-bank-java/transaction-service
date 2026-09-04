@@ -1,6 +1,7 @@
 package com.digitalbank.transactionservice.adapter.in.web;
 
 import com.digitalbank.transactionservice.application.port.in.RequestTransferCommand;
+import com.digitalbank.transactionservice.risk.TransferDestinationClass;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
@@ -26,7 +27,10 @@ record InternalTransferWorkflowRequest(
         @NotBlank @Size(max = 100, message = "must be at most 100 characters") String correlationId,
         @NotBlank @Size(max = 100, message = "must be at most 100 characters") String transferRequestId,
         @NotBlank @Size(max = 100, message = "must be at most 100 characters") String reservationRequestId,
-        @NotBlank @Size(max = 100, message = "must be at most 100 characters") String postingRequestId) {
+        @NotBlank @Size(max = 100, message = "must be at most 100 characters") String postingRequestId,
+        @Size(max = 100, message = "must be at most 100 characters") String decisionRequestId,
+        @Size(max = 30, message = "must be at most 30 characters") String channel,
+        TransferDestinationClass destinationClass) {
 
     @AssertTrue(message = "sourceAccountId and destinationAccountId must differ")
     boolean hasDistinctAccounts() {
@@ -35,7 +39,7 @@ record InternalTransferWorkflowRequest(
                 || !sourceAccountId.equals(destinationAccountId);
     }
 
-    RequestTransferCommand toCommand() {
+    RequestTransferCommand toCommand(String authenticatedSubject) {
         return new RequestTransferCommand(
                 transferId,
                 sourceAccountId,
@@ -45,6 +49,10 @@ record InternalTransferWorkflowRequest(
                 correlationId,
                 transferRequestId,
                 reservationRequestId,
-                postingRequestId);
+                postingRequestId,
+                authenticatedSubject,
+                channel == null || channel.isBlank() ? "INTERNAL" : channel,
+                destinationClass == null ? TransferDestinationClass.INTERNAL : destinationClass,
+                decisionRequestId == null || decisionRequestId.isBlank() ? transferRequestId : decisionRequestId);
     }
 }

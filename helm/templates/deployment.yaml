@@ -52,6 +52,18 @@ spec:
                   name: {{ .Values.auth.secrets.name | quote }}
                   key: {{ .Values.auth.secrets.jwtSecretKey | quote }}
             {{- end }}
+            - name: TRANSACTION_RISK_POLICY_VERSION
+              value: {{ .Values.risk.policyVersion | quote }}
+            - name: TRANSACTION_RISK_DECISION_TTL
+              value: {{ .Values.risk.decisionTtl | quote }}
+            - name: TRANSACTION_RISK_HIGH_VALUE_THRESHOLD_AED
+              value: {{ .Values.risk.highValueThresholds.AED | quote }}
+            - name: TRANSACTION_RISK_HIGH_VALUE_THRESHOLD_USD
+              value: {{ .Values.risk.highValueThresholds.USD | quote }}
+            - name: TRANSACTION_RISK_STEP_UP_DESTINATION_CLASSES
+              value: {{ .Values.risk.stepUpDestinationClasses | quote }}
+            - name: TRANSACTION_RISK_DECLINED_DESTINATION_CLASSES
+              value: {{ .Values.risk.declinedDestinationClasses | quote }}
             - name: TRANSACTION_KAFKA_BOOTSTRAP_SERVERS
               value: {{ .Values.kafka.bootstrapServers | quote }}
             - name: TRANSACTION_KAFKA_SECURITY_PROTOCOL

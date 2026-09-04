@@ -14,6 +14,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -145,10 +146,12 @@ class TransferWorkflowController {
     @ApiResponse(responseCode = "401", description = "Bearer authentication is required")
     @ApiResponse(responseCode = "403", description = "The authenticated subject is not authorized for transfer workflows")
     ResponseEntity<TransferWorkflowResponse> requestTransferWorkflow(
-            @Valid @RequestBody InternalTransferWorkflowRequest request) {
-        var result = processManager.requestTransfer(request.toCommand());
+            @Valid @RequestBody InternalTransferWorkflowRequest request,
+            Authentication authentication) {
+        var result = processManager.requestTransfer(request.toCommand(
+                authentication == null ? "system" : authentication.getName()));
         var response = TransferWorkflowResponse.from(result);
-        var replay = result.actions().isEmpty();
+        var replay = !result.created();
         var status = replay ? HttpStatus.OK : HttpStatus.CREATED;
         var builder = ResponseEntity.status(status);
         if (replay) {

@@ -39,6 +39,25 @@ coordination slice:
    release action.
 5. `AccountReservationRejected` marks a pending transfer `FAILED`.
 
+Before the reservation action is recorded, Transaction Service evaluates a
+transfer risk decision bound to the transfer intent. The configured evaluator
+returns `ALLOW`, `REQUIRE_STEP_UP`, or `DECLINE`:
+
+- `ALLOW` records the normal account-reservation action.
+- `REQUIRE_STEP_UP` persists the decision and leaves the workflow `PENDING`
+  without reserving funds. A later Sprint 4 MFA workflow will satisfy the
+  decision before reservation is allowed.
+- `DECLINE` persists the decision and fails the workflow without requesting a
+  reservation.
+
+Risk decisions are deterministic for the same policy version and normalized
+intent. Their request id and decision id are unique in PostgreSQL, and the
+decision snapshot is reloaded with the workflow so retries do not silently
+re-evaluate a different transfer. Decisions expire after the configured TTL;
+an expired decision cannot authorize reservation. This is the decision gate
+only; the external MFA challenge, account reservation, and ledger posting
+remain owned by their respective services and later event-driven work.
+
 Every message carries a transfer id, correlation id, and event/request id.
 Duplicate messages are idempotent. Ledger outcomes received before reservation
 success are durably deferred and replayed after the reservation event arrives.
@@ -119,6 +138,12 @@ effective runtime configuration, including the application port.
 | `SPRING_PROFILES_ACTIVE` | Runtime environment profile | Spring `default` profile |
 | `AUTH_JWT_SECRET` | Base64-encoded HMAC secret shared with Auth Service | unset |
 | `TRANSFER_ALLOWED_SUBJECTS` | Comma-separated JWT `sub` values authorized to request transfer workflows | empty, deny all |
+| `TRANSACTION_RISK_POLICY_VERSION` | Version of the configured transfer-risk policy | `transfer-risk-policy-2026-09` |
+| `TRANSACTION_RISK_DECISION_TTL` | Lifetime of a persisted risk decision | `PT5M` |
+| `TRANSACTION_RISK_HIGH_VALUE_THRESHOLD_AED` | AED amount at or above which step-up is required | `10000` |
+| `TRANSACTION_RISK_HIGH_VALUE_THRESHOLD_USD` | USD amount at or above which step-up is required | `10000` |
+| `TRANSACTION_RISK_STEP_UP_DESTINATION_CLASSES` | Comma-separated destination classes requiring step-up | `INTERNATIONAL` |
+| `TRANSACTION_RISK_DECLINED_DESTINATION_CLASSES` | Comma-separated destination classes to decline | empty |
 | `TRANSACTION_EVENTS_LEDGER_ENABLED` | Enable governed ledger Kafka publisher/listener adapters | `false` |
 | `LEDGER_POSTING_REQUESTED_TOPIC` | Ledger posting request command topic | `ledger.posting.requested.v1` |
 | `LEDGER_POSTING_COMPLETED_TOPIC` | Ledger posting completion fact topic | `ledger.posting.completed.v1` |
