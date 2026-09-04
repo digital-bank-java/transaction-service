@@ -10,6 +10,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.math.BigDecimal;
 import java.util.UUID;
 
 @Entity
@@ -49,6 +50,42 @@ class WorkflowEventJpaEntity {
     @Column(name = "event_status", nullable = false, length = 20)
     private EventStatus status;
 
+    @Column(name = "decision_id")
+    private UUID decisionId;
+
+    @Column(name = "subject_id", length = 100)
+    private String subjectId;
+
+    @Column(name = "challenge_id", length = 150)
+    private String challengeId;
+
+    @Column(name = "assurance_type", length = 50)
+    private String assuranceType;
+
+    @Column(name = "challenge_type", length = 50)
+    private String challengeType;
+
+    @Column(name = "source_account_id")
+    private UUID sourceAccountId;
+
+    @Column(name = "destination_account_id")
+    private UUID destinationAccountId;
+
+    @Column(name = "amount", precision = 19, scale = 4)
+    private BigDecimal amount;
+
+    @Column(name = "currency", length = 3)
+    private String currency;
+
+    @Column(name = "verified_at")
+    private Instant verifiedAt;
+
+    @Column(name = "expires_at")
+    private Instant expiresAt;
+
+    @Column(name = "policy_version", length = 100)
+    private String policyVersion;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -65,6 +102,18 @@ class WorkflowEventJpaEntity {
         this.postingRequestId = event.postingRequestId();
         this.reason = event.reason();
         this.status = event.status();
+        this.decisionId = event.decisionId();
+        this.subjectId = event.subjectId();
+        this.challengeId = event.challengeId();
+        this.assuranceType = event.assuranceType();
+        this.challengeType = event.challengeType();
+        this.sourceAccountId = event.sourceAccountId();
+        this.destinationAccountId = event.destinationAccountId();
+        this.amount = event.amount();
+        this.currency = event.currency();
+        this.verifiedAt = event.verifiedAt();
+        this.expiresAt = event.expiresAt();
+        this.policyVersion = event.policyVersion();
         this.createdAt = Instant.now();
     }
 
@@ -79,7 +128,19 @@ class WorkflowEventJpaEntity {
                 reservationId,
                 postingRequestId,
                 reason,
-                status);
+                status,
+                decisionId,
+                subjectId,
+                challengeId,
+                assuranceType,
+                challengeType,
+                sourceAccountId,
+                destinationAccountId,
+                amount,
+                currency,
+                verifiedAt,
+                expiresAt,
+                policyVersion);
     }
 
     String eventId() { return eventId; }

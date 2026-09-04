@@ -7,6 +7,9 @@ import com.digitalbank.transactionservice.application.port.in.AccountReservation
 import com.digitalbank.transactionservice.application.port.in.AccountReservationReleased;
 import com.digitalbank.transactionservice.application.port.in.LedgerPostingCompleted;
 import com.digitalbank.transactionservice.application.port.in.LedgerPostingFailed;
+import com.digitalbank.transactionservice.application.port.in.MfaAssuranceGranted;
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -20,7 +23,19 @@ public record WorkflowEventRecord(
         String reservationId,
         String postingRequestId,
         String reason,
-        EventStatus status) {
+        EventStatus status,
+        UUID decisionId,
+        String subjectId,
+        String challengeId,
+        String assuranceType,
+        String challengeType,
+        UUID sourceAccountId,
+        UUID destinationAccountId,
+        BigDecimal amount,
+        String currency,
+        Instant verifiedAt,
+        Instant expiresAt,
+        String policyVersion) {
 
     public WorkflowEventRecord {
         eventId = requireText(eventId, "eventId");
@@ -33,6 +48,27 @@ public record WorkflowEventRecord(
         postingRequestId = optionalText(postingRequestId);
         reason = optionalText(reason);
         Objects.requireNonNull(status, "status must not be null");
+        currency = optionalText(currency);
+        subjectId = optionalText(subjectId);
+        challengeId = optionalText(challengeId);
+        assuranceType = optionalText(assuranceType);
+        challengeType = optionalText(challengeType);
+        policyVersion = optionalText(policyVersion);
+    }
+
+    public WorkflowEventRecord(
+            String eventId,
+            UUID transferId,
+            EventType eventType,
+            String correlationId,
+            String requestId,
+            String reservationRequestId,
+            String reservationId,
+            String postingRequestId,
+            String reason,
+            EventStatus status) {
+        this(eventId, transferId, eventType, correlationId, requestId, reservationRequestId, reservationId,
+                postingRequestId, reason, status, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     public static WorkflowEventRecord from(AccountReservationCreated event) {
@@ -68,6 +104,15 @@ public record WorkflowEventRecord(
                 null,
                 event.reason(),
                 EventStatus.PROCESSED);
+    }
+
+    public static WorkflowEventRecord from(MfaAssuranceGranted event) {
+        return new WorkflowEventRecord(
+                event.eventId(), event.transferId(), EventType.MFA_ASSURANCE_GRANTED,
+                event.correlationId(), event.requestId(), event.reservationRequestId(), null, null, null,
+                EventStatus.PROCESSED, event.decisionId(), event.customerId(), event.challengeId(),
+                event.assuranceType(), event.challengeType(), event.sourceAccountId(), event.destinationAccountId(), event.amount(),
+                event.currency(), event.grantedAt(), event.expiresAt(), event.policyVersion());
     }
 
     public static WorkflowEventRecord from(AccountReservationReleased event) {
@@ -123,7 +168,9 @@ public record WorkflowEventRecord(
                 reservationId,
                 postingRequestId,
                 reason,
-                EventStatus.DEFERRED);
+                EventStatus.DEFERRED,
+                decisionId, subjectId, challengeId, assuranceType, challengeType, sourceAccountId, destinationAccountId,
+                amount, currency, verifiedAt, expiresAt, policyVersion);
     }
 
     public WorkflowEventRecord processed() {
@@ -137,7 +184,9 @@ public record WorkflowEventRecord(
                 reservationId,
                 postingRequestId,
                 reason,
-                EventStatus.PROCESSED);
+                EventStatus.PROCESSED,
+                decisionId, subjectId, challengeId, assuranceType, challengeType, sourceAccountId, destinationAccountId,
+                amount, currency, verifiedAt, expiresAt, policyVersion);
     }
 
     public boolean isDeferred() {
@@ -162,7 +211,8 @@ public record WorkflowEventRecord(
         ACCOUNT_RESERVATION_RELEASED,
         ACCOUNT_RESERVATION_EXPIRED,
         LEDGER_POSTING_COMPLETED,
-        LEDGER_POSTING_FAILED
+        LEDGER_POSTING_FAILED,
+        MFA_ASSURANCE_GRANTED
     }
 
     public enum EventStatus {

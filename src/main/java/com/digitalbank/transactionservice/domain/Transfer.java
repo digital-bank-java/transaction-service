@@ -139,9 +139,9 @@ public final class Transfer {
                 reservationRequestId,
                 postingRequestId,
                 null,
-                TransferStatus.PENDING,
+                initialStatus(Objects.requireNonNull(riskDecision, "riskDecision must not be null")),
                 0,
-                Objects.requireNonNull(riskDecision, "riskDecision must not be null"));
+                riskDecision);
     }
 
     public static Transfer rehydrate(
@@ -282,6 +282,59 @@ public final class Transfer {
                 && !riskDecision.expiredAt(now);
     }
 
+    public boolean applyMfaAssurance(
+            UUID decisionId,
+            String subjectId,
+            UUID sourceAccountId,
+            UUID destinationAccountId,
+            BigDecimal amount,
+            String currency,
+            String assuranceType,
+            String challengeType,
+            String policyVersion,
+            Instant verifiedAt,
+            Instant expiresAt,
+            Instant now) {
+        Objects.requireNonNull(decisionId, "decisionId must not be null");
+        requireText(subjectId, "subjectId");
+        Objects.requireNonNull(sourceAccountId, "sourceAccountId must not be null");
+        Objects.requireNonNull(destinationAccountId, "destinationAccountId must not be null");
+        requirePositive(amount);
+        requireCurrency(currency);
+        requireText(policyVersion, "policyVersion");
+        if (!"MFA".equals(requireText(assuranceType, "assuranceType"))) {
+            throw new TransferConflictException("MFA assurance type is invalid");
+        }
+        requireText(challengeType, "challengeType");
+        Objects.requireNonNull(verifiedAt, "verifiedAt must not be null");
+        Objects.requireNonNull(expiresAt, "expiresAt must not be null");
+        Objects.requireNonNull(now, "now must not be null");
+        if (riskDecision == null || riskDecision.outcome() != TransferRiskOutcome.REQUIRE_STEP_UP) {
+            throw new TransferConflictException("MFA assurance is not required for this transfer");
+        }
+        if (!riskDecision.decisionId().equals(decisionId)
+                || !customerId.equals(subjectId)
+                || !this.sourceAccountId.equals(sourceAccountId)
+                || !this.destinationAccountId.equals(destinationAccountId)
+                || this.amount.compareTo(amount) != 0
+                || !this.currency.equals(requireCurrency(currency))
+                || !riskDecision.requiredAssurance().equals(assuranceType)
+                || !riskDecision.challengeType().equals(challengeType)
+                || !riskDecision.policyVersion().equals(policyVersion)
+                || verifiedAt.isAfter(now)
+                || !verifiedAt.isBefore(expiresAt)
+                || !expiresAt.equals(riskDecision.expiresAt())
+                || riskDecision.expiredAt(now)) {
+            throw new TransferConflictException("MFA assurance does not match the transfer risk decision");
+        }
+        if (status == TransferStatus.PENDING) {
+            return false;
+        }
+        transitionTo(TransferStatus.PENDING);
+        version++;
+        return true;
+    }
+
     public boolean declineForRisk() {
         if (status == TransferStatus.FAILED) {
             return false;
@@ -383,7 +436,9 @@ public final class Transfer {
             return;
         }
 
-        boolean allowed = (status == TransferStatus.PENDING
+        boolean allowed = (status == TransferStatus.AWAITING_STEP_UP
+                && target == TransferStatus.PENDING)
+                || (status == TransferStatus.PENDING
                 && target == TransferStatus.AWAITING_LEDGER_POSTING)
                 || (status == TransferStatus.PENDING && target == TransferStatus.FAILED)
                 || (status == TransferStatus.AWAITING_LEDGER_POSTING
@@ -400,6 +455,12 @@ public final class Transfer {
         }
 
         status = target;
+    }
+
+    private static TransferStatus initialStatus(TransferRiskDecision riskDecision) {
+        return riskDecision.outcome() == TransferRiskOutcome.REQUIRE_STEP_UP
+                ? TransferStatus.AWAITING_STEP_UP
+                : TransferStatus.PENDING;
     }
 
     private static BigDecimal requirePositive(BigDecimal value) {
