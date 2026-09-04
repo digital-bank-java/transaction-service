@@ -28,6 +28,11 @@ import com.digitalbank.transactionservice.domain.IllegalTransferTransitionExcept
 import com.digitalbank.transactionservice.domain.Transfer;
 import com.digitalbank.transactionservice.domain.TransferConflictException;
 import com.digitalbank.transactionservice.domain.TransferStatus;
+import com.digitalbank.transactionservice.risk.ConfiguredTransferRiskEvaluator;
+import com.digitalbank.transactionservice.risk.TransferRiskDecision;
+import com.digitalbank.transactionservice.risk.TransferRiskEvaluator;
+import com.digitalbank.transactionservice.risk.TransferRiskIntent;
+import com.digitalbank.transactionservice.risk.TransferRiskProperties;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -46,6 +51,7 @@ public class TransferProcessManager {
     private final TransferCreatedEventOutbox transferCreatedEventOutbox;
     private final ReservationCommandEventOutbox reservationCommandEventOutbox;
     private final LedgerCommandEventOutbox ledgerCommandEventOutbox;
+    private final TransferRiskEvaluator riskEvaluator;
 
     public TransferProcessManager(
             TransferWorkflowRepository workflowRepository,
@@ -53,7 +59,18 @@ public class TransferProcessManager {
             WorkflowActionRepository actionRepository,
             TransferCreatedEventOutbox transferCreatedEventOutbox) {
         this(workflowRepository, eventInbox, actionRepository, transferCreatedEventOutbox,
-                new NoOpReservationCommandEventOutbox(), new NoOpLedgerCommandEventOutbox());
+                new NoOpReservationCommandEventOutbox(), new NoOpLedgerCommandEventOutbox(), legacyRiskEvaluator());
+    }
+
+    public TransferProcessManager(
+            TransferWorkflowRepository workflowRepository,
+            WorkflowEventInbox eventInbox,
+            WorkflowActionRepository actionRepository,
+            TransferCreatedEventOutbox transferCreatedEventOutbox,
+            ReservationCommandEventOutbox reservationCommandEventOutbox,
+            LedgerCommandEventOutbox ledgerCommandEventOutbox) {
+        this(workflowRepository, eventInbox, actionRepository, transferCreatedEventOutbox,
+                reservationCommandEventOutbox, ledgerCommandEventOutbox, legacyRiskEvaluator());
     }
 
     @Autowired
@@ -63,7 +80,8 @@ public class TransferProcessManager {
             WorkflowActionRepository actionRepository,
             TransferCreatedEventOutbox transferCreatedEventOutbox,
             ReservationCommandEventOutbox reservationCommandEventOutbox,
-            LedgerCommandEventOutbox ledgerCommandEventOutbox) {
+            LedgerCommandEventOutbox ledgerCommandEventOutbox,
+            TransferRiskEvaluator riskEvaluator) {
         this.workflowRepository = Objects.requireNonNull(workflowRepository, "workflowRepository must not be null");
         this.eventInbox = Objects.requireNonNull(eventInbox, "eventInbox must not be null");
         this.actionRepository = Objects.requireNonNull(actionRepository, "actionRepository must not be null");
@@ -73,26 +91,50 @@ public class TransferProcessManager {
                 reservationCommandEventOutbox, "reservationCommandEventOutbox must not be null");
         this.ledgerCommandEventOutbox = Objects.requireNonNull(
                 ledgerCommandEventOutbox, "ledgerCommandEventOutbox must not be null");
+        this.riskEvaluator = Objects.requireNonNull(riskEvaluator, "riskEvaluator must not be null");
     }
 
     @Transactional
     public WorkflowResult requestTransfer(RequestTransferCommand command) {
+        var riskDecision = riskEvaluator.evaluate(
+                new TransferRiskIntent(
+                        command.transferId(),
+                        command.decisionRequestId(),
+                        command.customerId(),
+                        command.sourceAccountId(),
+                        command.destinationAccountId(),
+                        command.amount(),
+                        command.currency(),
+                        command.channel(),
+                        command.destinationClass(),
+                        command.correlationId()),
+                java.time.Instant.now());
         var transfer = Transfer.request(
                 command.transferId(),
                 command.sourceAccountId(),
                 command.destinationAccountId(),
                 command.amount(),
                 command.currency(),
+                command.customerId(),
+                command.channel(),
+                command.destinationClass(),
                 command.correlationId(),
                 command.transferRequestId(),
                 command.reservationRequestId(),
-                command.postingRequestId());
+                command.postingRequestId(),
+                riskDecision);
+        if (riskDecision.outcome() == com.digitalbank.transactionservice.risk.TransferRiskOutcome.DECLINE) {
+            transfer.declineForRisk();
+        }
         var persisted = workflowRepository.saveIfAbsent(transfer);
         assertSameRequest(persisted, command);
 
+        var created = transferCreatedEventOutbox.recordIfAbsent(TransferCreatedEvent.from(persisted));
+        if (!persisted.riskAllowsReservation(java.time.Instant.now())) {
+            return result(persisted, List.of(), created);
+        }
         var action = RequestAccountReservation.forTransfer(persisted);
-        transferCreatedEventOutbox.recordIfAbsent(TransferCreatedEvent.from(persisted));
-        return result(persisted, record(persisted, action));
+        return result(persisted, record(persisted, action), created);
     }
 
     @Transactional(readOnly = true)
@@ -284,11 +326,18 @@ public class TransferProcessManager {
                 || !transfer.destinationAccountId().equals(command.destinationAccountId())
                 || transfer.amount().compareTo(command.amount()) != 0
                 || !transfer.currency().equals(command.currency())
+                || !transfer.customerId().equals(command.customerId())
+                || !transfer.channel().equals(command.channel().toUpperCase())
+                || transfer.destinationClass() != command.destinationClass()
                 || !transfer.correlationId().equals(command.correlationId())
                 || !transfer.transferRequestId().equals(command.transferRequestId())
                 || !transfer.reservationRequestId().equals(command.reservationRequestId())
                 || !transfer.postingRequestId().equals(command.postingRequestId())) {
             throw new TransferConflictException("Transfer workflow request conflicts with existing data");
+        }
+        if (transfer.riskDecision() != null
+                && !transfer.riskDecision().decisionRequestId().equals(command.decisionRequestId())) {
+            throw new TransferConflictException("Transfer risk decision conflicts with existing data");
         }
     }
 
@@ -321,6 +370,19 @@ public class TransferProcessManager {
 
     private static WorkflowResult result(Transfer transfer, List<WorkflowAction> actions) {
         return new WorkflowResult(transfer, actions);
+    }
+
+    private static WorkflowResult result(Transfer transfer, List<WorkflowAction> actions, boolean created) {
+        return new WorkflowResult(transfer, actions, created);
+    }
+
+    private static TransferRiskEvaluator legacyRiskEvaluator() {
+        return new ConfiguredTransferRiskEvaluator(new TransferRiskProperties(
+                "legacy-test-policy",
+                java.time.Duration.ofMinutes(5),
+                java.util.Map.of(),
+                java.util.Set.of(),
+                java.util.Set.of()));
     }
 
     private static final class NoOpReservationCommandEventOutbox implements ReservationCommandEventOutbox {

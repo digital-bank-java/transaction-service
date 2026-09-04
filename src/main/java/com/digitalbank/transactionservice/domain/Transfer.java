@@ -1,8 +1,12 @@
 package com.digitalbank.transactionservice.domain;
 
+import com.digitalbank.transactionservice.risk.TransferDestinationClass;
+import com.digitalbank.transactionservice.risk.TransferRiskDecision;
+import com.digitalbank.transactionservice.risk.TransferRiskOutcome;
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
-import java.math.BigDecimal;
 
 public final class Transfer {
 
@@ -11,10 +15,14 @@ public final class Transfer {
     private final UUID destinationAccountId;
     private final BigDecimal amount;
     private final String currency;
+    private final String customerId;
+    private final String channel;
+    private final TransferDestinationClass destinationClass;
     private final String correlationId;
     private final String transferRequestId;
     private final String reservationRequestId;
     private final String postingRequestId;
+    private final TransferRiskDecision riskDecision;
     private TransferStatus status;
     private String reservationId;
     private long version;
@@ -25,13 +33,17 @@ public final class Transfer {
             UUID destinationAccountId,
             BigDecimal amount,
             String currency,
+            String customerId,
+            String channel,
+            TransferDestinationClass destinationClass,
             String correlationId,
             String transferRequestId,
             String reservationRequestId,
             String postingRequestId,
             String reservationId,
             TransferStatus status,
-            long version) {
+            long version,
+            TransferRiskDecision riskDecision) {
         this.id = Objects.requireNonNull(id, "id must not be null");
         this.sourceAccountId = Objects.requireNonNull(sourceAccountId, "sourceAccountId must not be null");
         this.destinationAccountId = Objects.requireNonNull(destinationAccountId, "destinationAccountId must not be null");
@@ -40,12 +52,21 @@ public final class Transfer {
         }
         this.amount = requirePositive(amount);
         this.currency = requireCurrency(currency);
+        this.customerId = requireText(customerId, "customerId");
+        this.channel = requireText(channel, "channel").toUpperCase();
+        this.destinationClass = Objects.requireNonNull(destinationClass, "destinationClass must not be null");
         this.correlationId = requireText(correlationId, "correlationId");
         this.transferRequestId = requireText(transferRequestId, "transferRequestId");
         this.reservationRequestId = requireText(reservationRequestId, "reservationRequestId");
         this.postingRequestId = requireText(postingRequestId, "postingRequestId");
         this.reservationId = reservationId == null ? null : requireText(reservationId, "reservationId");
         this.status = Objects.requireNonNull(status, "status must not be null");
+        this.riskDecision = riskDecision;
+        if (riskDecision != null
+                && (!id.equals(riskDecision.transferId())
+                        || !correlationId.equals(riskDecision.correlationId()))) {
+            throw new IllegalArgumentException("risk decision must be bound to this transfer");
+        }
         if (version < 0) {
             throw new IllegalArgumentException("version must not be negative");
         }
@@ -77,13 +98,50 @@ public final class Transfer {
                 destinationAccountId,
                 amount,
                 currency,
+                "system",
+                "INTERNAL",
+                TransferDestinationClass.INTERNAL,
                 correlationId,
                 transferRequestId,
                 reservationRequestId,
                 postingRequestId,
                 null,
                 TransferStatus.PENDING,
-                0);
+                0,
+                null);
+    }
+
+    public static Transfer request(
+            UUID id,
+            UUID sourceAccountId,
+            UUID destinationAccountId,
+            BigDecimal amount,
+            String currency,
+            String customerId,
+            String channel,
+            TransferDestinationClass destinationClass,
+            String correlationId,
+            String transferRequestId,
+            String reservationRequestId,
+            String postingRequestId,
+            TransferRiskDecision riskDecision) {
+        return new Transfer(
+                id,
+                sourceAccountId,
+                destinationAccountId,
+                amount,
+                currency,
+                customerId,
+                channel,
+                destinationClass,
+                correlationId,
+                transferRequestId,
+                reservationRequestId,
+                postingRequestId,
+                null,
+                TransferStatus.PENDING,
+                0,
+                Objects.requireNonNull(riskDecision, "riskDecision must not be null"));
     }
 
     public static Transfer rehydrate(
@@ -105,13 +163,53 @@ public final class Transfer {
                 destinationAccountId,
                 amount,
                 currency,
+                "system",
+                "INTERNAL",
+                TransferDestinationClass.INTERNAL,
                 correlationId,
                 transferRequestId,
                 reservationRequestId,
                 postingRequestId,
                 reservationId,
                 status,
-                version);
+                version,
+                null);
+    }
+
+    public static Transfer rehydrate(
+            UUID id,
+            UUID sourceAccountId,
+            UUID destinationAccountId,
+            BigDecimal amount,
+            String currency,
+            String customerId,
+            String channel,
+            TransferDestinationClass destinationClass,
+            String correlationId,
+            String transferRequestId,
+            String reservationRequestId,
+            String postingRequestId,
+            String reservationId,
+            TransferStatus status,
+            long version,
+            TransferRiskDecision riskDecision) {
+        return new Transfer(
+                id,
+                sourceAccountId,
+                destinationAccountId,
+                amount,
+                currency,
+                customerId,
+                channel,
+                destinationClass,
+                correlationId,
+                transferRequestId,
+                reservationRequestId,
+                postingRequestId,
+                reservationId,
+                status,
+                version,
+                riskDecision);
     }
 
     public UUID id() {
@@ -132,6 +230,18 @@ public final class Transfer {
 
     public String currency() {
         return currency;
+    }
+
+    public String customerId() {
+        return customerId;
+    }
+
+    public String channel() {
+        return channel;
+    }
+
+    public TransferDestinationClass destinationClass() {
+        return destinationClass;
     }
 
     public String correlationId() {
@@ -160,6 +270,25 @@ public final class Transfer {
 
     public TransferStatus status() {
         return status;
+    }
+
+    public TransferRiskDecision riskDecision() {
+        return riskDecision;
+    }
+
+    public boolean riskAllowsReservation(Instant now) {
+        return riskDecision != null
+                && riskDecision.outcome() == TransferRiskOutcome.ALLOW
+                && !riskDecision.expiredAt(now);
+    }
+
+    public boolean declineForRisk() {
+        if (status == TransferStatus.FAILED) {
+            return false;
+        }
+        transitionTo(TransferStatus.FAILED);
+        version++;
+        return true;
     }
 
     public boolean accountReservationCreated(

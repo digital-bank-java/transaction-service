@@ -24,6 +24,9 @@ import com.digitalbank.transactionservice.application.port.out.WorkflowEventReco
 import com.digitalbank.transactionservice.domain.Transfer;
 import com.digitalbank.transactionservice.domain.TransferConflictException;
 import com.digitalbank.transactionservice.domain.TransferStatus;
+import com.digitalbank.transactionservice.risk.TransferRiskDecision;
+import com.digitalbank.transactionservice.risk.TransferRiskEvaluator;
+import com.digitalbank.transactionservice.risk.TransferRiskOutcome;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -72,6 +75,32 @@ class TransferProcessManagerTest {
         assertThat(result.actions()).hasSize(1);
         assertThat(result.actions().getFirst().actionId()).isEqualTo("account-reservation:" + RESERVATION_REQUEST_ID);
         assertThat(actions.actions()).hasSize(1);
+    }
+
+    @Test
+    void riskDecisionCanRequireStepUpWithoutRequestingReservation() {
+        var manager = managerWithRiskDecision(TransferRiskOutcome.REQUIRE_STEP_UP);
+
+        var result = manager.requestTransfer(command());
+
+        assertThat(result.created()).isTrue();
+        assertThat(result.transfer().status()).isEqualTo(TransferStatus.PENDING);
+        assertThat(result.transfer().riskDecision().outcome()).isEqualTo(TransferRiskOutcome.REQUIRE_STEP_UP);
+        assertThat(result.actions()).isEmpty();
+        assertThat(actions.actions()).isEmpty();
+    }
+
+    @Test
+    void declinedRiskDecisionFailsWithoutRequestingReservation() {
+        var manager = managerWithRiskDecision(TransferRiskOutcome.DECLINE);
+
+        var result = manager.requestTransfer(command());
+
+        assertThat(result.created()).isTrue();
+        assertThat(result.transfer().status()).isEqualTo(TransferStatus.FAILED);
+        assertThat(result.transfer().riskDecision().outcome()).isEqualTo(TransferRiskOutcome.DECLINE);
+        assertThat(result.actions()).isEmpty();
+        assertThat(actions.actions()).isEmpty();
     }
 
     @Test
@@ -296,6 +325,23 @@ class TransferProcessManagerTest {
         processManager.requestTransfer(command());
         processManager.handle(new AccountReservationCreated(
                 TRANSFER_ID, "event-reservation-005", CORRELATION_ID, RESERVATION_REQUEST_ID, "reservation-001"));
+    }
+
+    private TransferProcessManager managerWithRiskDecision(TransferRiskOutcome outcome) {
+        TransferRiskEvaluator evaluator = (intent, now) -> new TransferRiskDecision(
+                UUID.nameUUIDFromBytes(("decision:" + outcome).getBytes()),
+                intent.decisionRequestId(),
+                intent.transferId(),
+                outcome,
+                List.of("TEST_POLICY"),
+                outcome == TransferRiskOutcome.REQUIRE_STEP_UP ? "MFA" : null,
+                outcome == TransferRiskOutcome.REQUIRE_STEP_UP ? "TOTP" : null,
+                "test-policy",
+                now,
+                now.plusSeconds(300),
+                intent.correlationId());
+        return new TransferProcessManager(workflows, events, actions, outbox,
+                new InMemoryReservationCommandEventOutbox(), ledgerOutbox, evaluator);
     }
 
     private static RequestTransferCommand command() {
