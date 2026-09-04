@@ -2,9 +2,8 @@
 
 ## Repository Purpose
 
-This repository contains the deployable bootstrap for the future Transaction
-Service. The service will eventually own transfer orchestration and the
-transfer saga/process-manager foundation.
+This repository contains the deployable Transaction Service and its internal
+transfer saga/process-manager boundary.
 
 ## Current Boundary
 
@@ -52,7 +51,7 @@ Service `PostLedgerEntryCommand`, including `description`, `effectiveAt`,
 ./mvnw test
 ./mvnw verify
 ./mvnw spring-boot:run
-docker build -t digital-bank-java/transaction-service:0.0.1 .
+docker build -t digital-bank-java/transaction-service:0.0.4 .
 helm lint helm --strict
 ```
 
