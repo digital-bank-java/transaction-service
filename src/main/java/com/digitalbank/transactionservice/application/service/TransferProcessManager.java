@@ -7,6 +7,7 @@ import com.digitalbank.transactionservice.application.port.in.AccountReservation
 import com.digitalbank.transactionservice.application.port.in.AccountReservationReleased;
 import com.digitalbank.transactionservice.application.port.in.LedgerPostingCompleted;
 import com.digitalbank.transactionservice.application.port.in.LedgerPostingFailed;
+import com.digitalbank.transactionservice.application.port.in.MfaAssuranceGranted;
 import com.digitalbank.transactionservice.application.port.in.RequestTransferCommand;
 import com.digitalbank.transactionservice.application.port.out.ReleaseAccountReservation;
 import com.digitalbank.transactionservice.application.port.out.RequestAccountReservation;
@@ -178,6 +179,11 @@ public class TransferProcessManager {
         return handle(WorkflowEventRecord.from(event));
     }
 
+    @Transactional
+    public WorkflowResult handle(MfaAssuranceGranted event) {
+        return handle(WorkflowEventRecord.from(event));
+    }
+
     private WorkflowResult handle(WorkflowEventRecord event) {
         var transfer = workflowRepository.findById(event.transferId())
                 .orElseThrow(() -> new IllegalArgumentException("Transfer not found: " + event.transferId()));
@@ -205,6 +211,7 @@ public class TransferProcessManager {
             case ACCOUNT_RESERVATION_EXPIRED -> applyReservationExpired(transfer, event);
             case LEDGER_POSTING_COMPLETED -> applyLedgerCompleted(transfer, event);
             case LEDGER_POSTING_FAILED -> applyLedgerFailed(transfer, event, actions);
+            case MFA_ASSURANCE_GRANTED -> applyMfaAssurance(transfer, event, actions);
         }
         return result(transfer, actions);
     }
@@ -269,6 +276,27 @@ public class TransferProcessManager {
         eventInbox.recordProcessed(event);
     }
 
+    private void applyMfaAssurance(Transfer transfer, WorkflowEventRecord event, List<WorkflowAction> actions) {
+        var changed = transfer.applyMfaAssurance(
+                event.decisionId(),
+                event.subjectId(),
+                event.sourceAccountId(),
+                event.destinationAccountId(),
+                event.amount(),
+                event.currency(),
+                event.assuranceType(),
+                event.challengeType(),
+                event.policyVersion(),
+                event.verifiedAt(),
+                event.expiresAt(),
+                java.time.Instant.now());
+        if (changed) {
+            workflowRepository.save(transfer);
+            addAction(actions, transfer, RequestAccountReservation.forTransfer(transfer));
+        }
+        eventInbox.recordProcessed(event);
+    }
+
     private void replayDeferredLedgerEvents(
             Transfer transfer, List<WorkflowEventRecord> deferredEvents, List<WorkflowAction> actions) {
         for (var deferred : deferredEvents) {
@@ -297,6 +325,11 @@ public class TransferProcessManager {
                 || event.eventType() == EventType.LEDGER_POSTING_FAILED) {
             requireMatch(transfer.postingRequestId(), event.postingRequestId(), "postingRequestId");
         }
+        if (event.eventType() == EventType.MFA_ASSURANCE_GRANTED) {
+            requireMfaAssurance(transfer, event);
+            requireMatch(transfer.reservationRequestId(), event.reservationRequestId(), "reservationRequestId");
+            requireMatch(transfer.riskDecision().decisionRequestId(), event.requestId(), "decisionRequestId");
+        }
     }
 
     private static void requireCorrelation(Transfer transfer, String correlationId) {
@@ -317,7 +350,44 @@ public class TransferProcessManager {
                 && Objects.equals(previous.reservationRequestId(), current.reservationRequestId())
                 && Objects.equals(previous.reservationId(), current.reservationId())
                 && Objects.equals(previous.postingRequestId(), current.postingRequestId())
-                && Objects.equals(previous.reason(), current.reason());
+                && Objects.equals(previous.reason(), current.reason())
+                && Objects.equals(previous.decisionId(), current.decisionId())
+                && Objects.equals(previous.subjectId(), current.subjectId())
+                && Objects.equals(previous.challengeId(), current.challengeId())
+                && Objects.equals(previous.assuranceType(), current.assuranceType())
+                && Objects.equals(previous.challengeType(), current.challengeType())
+                && Objects.equals(previous.sourceAccountId(), current.sourceAccountId())
+                && Objects.equals(previous.destinationAccountId(), current.destinationAccountId())
+                && Objects.equals(previous.amount(), current.amount())
+                && Objects.equals(previous.currency(), current.currency())
+                && Objects.equals(previous.verifiedAt(), current.verifiedAt())
+                && Objects.equals(previous.expiresAt(), current.expiresAt())
+                && Objects.equals(previous.policyVersion(), current.policyVersion());
+    }
+
+    private static void requireMfaAssurance(Transfer transfer, WorkflowEventRecord event) {
+        var decision = transfer.riskDecision();
+        if (decision == null || decision.outcome() != com.digitalbank.transactionservice.risk.TransferRiskOutcome.REQUIRE_STEP_UP) {
+            throw new TransferConflictException("MFA assurance is not required for this transfer");
+        }
+        if (!Objects.equals(decision.decisionId(), event.decisionId())) {
+            throw new TransferConflictException("decisionId does not match transfer risk decision");
+        }
+        if (event.subjectId() == null || !Objects.equals(transfer.customerId(), event.subjectId())) {
+            throw new TransferConflictException("subjectId does not match transfer customer");
+        }
+        if (event.challengeId() == null || event.assuranceType() == null || event.challengeType() == null
+                || event.sourceAccountId() == null || event.destinationAccountId() == null
+                || event.amount() == null || event.currency() == null || event.verifiedAt() == null
+                || event.expiresAt() == null || event.policyVersion() == null) {
+            throw new TransferConflictException("MFA assurance event is incomplete");
+        }
+        if (!Objects.equals(decision.policyVersion(), event.policyVersion())
+                || !Objects.equals(decision.requiredAssurance(), event.assuranceType())
+                || !Objects.equals(decision.challengeType(), event.challengeType())
+                || !Objects.equals(decision.expiresAt(), event.expiresAt())) {
+            throw new TransferConflictException("MFA assurance policy window does not match risk decision");
+        }
     }
 
     private void assertSameRequest(Transfer transfer, RequestTransferCommand command) {

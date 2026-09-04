@@ -9,6 +9,7 @@ import com.digitalbank.transactionservice.application.port.in.AccountReservation
 import com.digitalbank.transactionservice.application.port.in.AccountReservationReleased;
 import com.digitalbank.transactionservice.application.port.in.LedgerPostingCompleted;
 import com.digitalbank.transactionservice.application.port.in.LedgerPostingFailed;
+import com.digitalbank.transactionservice.application.port.in.MfaAssuranceGranted;
 import com.digitalbank.transactionservice.application.port.in.RequestTransferCommand;
 import com.digitalbank.transactionservice.application.port.out.ReservationCommandEvent;
 import com.digitalbank.transactionservice.application.port.out.ReservationCommandEventOutbox;
@@ -84,10 +85,54 @@ class TransferProcessManagerTest {
         var result = manager.requestTransfer(command());
 
         assertThat(result.created()).isTrue();
-        assertThat(result.transfer().status()).isEqualTo(TransferStatus.PENDING);
+        assertThat(result.transfer().status().name()).isEqualTo("AWAITING_STEP_UP");
         assertThat(result.transfer().riskDecision().outcome()).isEqualTo(TransferRiskOutcome.REQUIRE_STEP_UP);
         assertThat(result.actions()).isEmpty();
         assertThat(actions.actions()).isEmpty();
+    }
+
+    @Test
+    void grantedMfaAssuranceResumesStepUpTransferAndRequestsReservation() {
+        var now = Instant.now();
+        var decision = new TransferRiskDecision(
+                UUID.fromString("44444444-4444-4444-4444-444444444444"),
+                "transfer-request-001", TRANSFER_ID, TransferRiskOutcome.REQUIRE_STEP_UP,
+                List.of("HIGH_VALUE"), "MFA", "TOTP", "test-policy", now, now.plusSeconds(300), CORRELATION_ID);
+        TransferRiskEvaluator evaluator = (intent, ignored) -> decision;
+        var manager = new TransferProcessManager(workflows, events, actions, outbox,
+                new InMemoryReservationCommandEventOutbox(), ledgerOutbox, evaluator);
+
+        manager.requestTransfer(command());
+        var result = manager.handle(new MfaAssuranceGranted(
+                TRANSFER_ID, "event-mfa-001", CORRELATION_ID, "transfer-request-001", RESERVATION_REQUEST_ID,
+                decision.decisionId(), "system", "challenge-001", "MFA", SOURCE_ACCOUNT_ID,
+                DESTINATION_ACCOUNT_ID, new BigDecimal("12.50"), "AED", "TOTP", now.minusSeconds(1),
+                decision.expiresAt(), decision.policyVersion()));
+
+        assertThat(result.transfer().status()).isEqualTo(TransferStatus.PENDING);
+        assertThat(result.actions()).singleElement()
+                .extracting(WorkflowAction::actionId)
+                .isEqualTo("account-reservation:" + RESERVATION_REQUEST_ID);
+    }
+
+    @Test
+    void mfaAssuranceWithDifferentChallengeTypeIsRejected() {
+        var now = Instant.now();
+        var decision = new TransferRiskDecision(
+                UUID.fromString("55555555-5555-5555-5555-555555555555"),
+                "transfer-request-001", TRANSFER_ID, TransferRiskOutcome.REQUIRE_STEP_UP,
+                List.of("HIGH_VALUE"), "MFA", "TOTP", "test-policy", now, now.plusSeconds(300), CORRELATION_ID);
+        var manager = new TransferProcessManager(workflows, events, actions, outbox,
+                new InMemoryReservationCommandEventOutbox(), ledgerOutbox, (intent, ignored) -> decision);
+        manager.requestTransfer(command());
+
+        assertThatThrownBy(() -> manager.handle(new MfaAssuranceGranted(
+                TRANSFER_ID, "event-mfa-002", CORRELATION_ID, "transfer-request-001", RESERVATION_REQUEST_ID,
+                decision.decisionId(), "system", "challenge-002", "MFA", SOURCE_ACCOUNT_ID,
+                DESTINATION_ACCOUNT_ID, new BigDecimal("12.50"), "AED", "SMS", now.minusSeconds(1),
+                decision.expiresAt(), decision.policyVersion())))
+                .isInstanceOf(TransferConflictException.class);
+        assertThat(workflows.findById(TRANSFER_ID).orElseThrow().status()).isEqualTo(TransferStatus.AWAITING_STEP_UP);
     }
 
     @Test
