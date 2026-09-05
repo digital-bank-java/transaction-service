@@ -378,3 +378,8 @@ pull request. Do not commit directly to `main`.
 
 See the organization [README standard](https://github.com/digital-bank-java/.github/blob/main/docs/readme-standard.md)
 and [platform conventions](https://github.com/digital-bank-java/.github/blob/main/docs/platform-conventions.md).
+
+## Operational Logging
+
+The service emits one-line ECS JSON console events and propagates the bounded
+`X-Correlation-ID` boundary defined in the organization [structured logging and redaction contract](https://github.com/digital-bank-java/.github/blob/main/docs/structured-logging-and-redaction.md). Request bodies, credentials, tokens, transfer data, and customer data are not logged.
