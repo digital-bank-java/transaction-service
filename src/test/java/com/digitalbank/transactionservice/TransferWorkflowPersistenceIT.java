@@ -152,8 +152,8 @@ class TransferWorkflowPersistenceIT {
                 reservationRequestId,
                 "AED",
                 List.of(
-                        new LedgerPostingCompleted.Line(sourceAccountId, "DEBIT", new BigDecimal("12.50")),
-                        new LedgerPostingCompleted.Line(destinationAccountId, "CREDIT", new BigDecimal("12.50")))));
+                        new LedgerPostingCompleted.Line(sourceAccountId, "DEBIT", new BigDecimal("17.25")),
+                        new LedgerPostingCompleted.Line(destinationAccountId, "CREDIT", new BigDecimal("17.25")))));
 
         assertThat(eventInbox.findDeferredByTransferId(transferId)).hasSize(1);
 
