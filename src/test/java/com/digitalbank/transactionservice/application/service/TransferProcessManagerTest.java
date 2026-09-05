@@ -248,11 +248,105 @@ class TransferProcessManagerTest {
     void ledgerCompletionCompletesTransfer() {
         reserve();
 
-        var result = processManager.handle(new LedgerPostingCompleted(
-                TRANSFER_ID, "event-ledger-001", CORRELATION_ID, "ledger-event-request-001", POSTING_REQUEST_ID));
+        var result = processManager.handle(ledgerCompletion("event-ledger-001"));
 
         assertThat(result.transfer().status()).isEqualTo(TransferStatus.COMPLETED);
         assertThat(result.actions()).isEmpty();
+    }
+
+    @Test
+    void ledgerCompletionWithMismatchedDestinationIsRejectedWithoutProcessingEvent() {
+        reserve();
+
+        assertThatThrownBy(() -> processManager.handle(new LedgerPostingCompleted(
+                TRANSFER_ID,
+                "event-ledger-wrong-destination",
+                CORRELATION_ID,
+                "ledger-event-request-wrong-destination",
+                "posting-001",
+                POSTING_REQUEST_ID,
+                RESERVATION_REQUEST_ID,
+                "AED",
+                List.of(
+                        new LedgerPostingCompleted.Line(SOURCE_ACCOUNT_ID, "DEBIT", new BigDecimal("12.50")),
+                        new LedgerPostingCompleted.Line(
+                                UUID.fromString("44444444-4444-4444-4444-444444444444"),
+                                "CREDIT",
+                                new BigDecimal("12.50"))))))
+                .isInstanceOf(TransferConflictException.class);
+        assertThat(workflows.findById(TRANSFER_ID).orElseThrow().status())
+                .isEqualTo(TransferStatus.AWAITING_LEDGER_POSTING);
+        assertThat(events.eventIds()).doesNotContain("event-ledger-wrong-destination");
+    }
+
+    @Test
+    void ledgerCompletionWithMismatchedAmountIsRejectedWithoutProcessingEvent() {
+        reserve();
+
+        assertThatThrownBy(() -> processManager.handle(new LedgerPostingCompleted(
+                TRANSFER_ID,
+                "event-ledger-wrong-amount",
+                CORRELATION_ID,
+                "ledger-event-request-wrong-amount",
+                "posting-001",
+                POSTING_REQUEST_ID,
+                RESERVATION_REQUEST_ID,
+                "AED",
+                List.of(
+                        new LedgerPostingCompleted.Line(SOURCE_ACCOUNT_ID, "DEBIT", new BigDecimal("12.50")),
+                        new LedgerPostingCompleted.Line(DESTINATION_ACCOUNT_ID, "CREDIT", new BigDecimal("12.51"))))))
+                .isInstanceOf(TransferConflictException.class);
+        assertThat(workflows.findById(TRANSFER_ID).orElseThrow().status())
+                .isEqualTo(TransferStatus.AWAITING_LEDGER_POSTING);
+        assertThat(events.eventIds()).doesNotContain("event-ledger-wrong-amount");
+    }
+
+    @Test
+    void ledgerCompletionWithMismatchedCurrencyIsRejectedWithoutProcessingEvent() {
+        reserve();
+
+        assertThatThrownBy(() -> processManager.handle(new LedgerPostingCompleted(
+                TRANSFER_ID,
+                "event-ledger-wrong-currency",
+                CORRELATION_ID,
+                "ledger-event-request-wrong-currency",
+                "posting-001",
+                POSTING_REQUEST_ID,
+                RESERVATION_REQUEST_ID,
+                "USD",
+                List.of(
+                        new LedgerPostingCompleted.Line(SOURCE_ACCOUNT_ID, "DEBIT", new BigDecimal("12.50")),
+                        new LedgerPostingCompleted.Line(DESTINATION_ACCOUNT_ID, "CREDIT", new BigDecimal("12.50"))))))
+                .isInstanceOf(TransferConflictException.class);
+        assertThat(workflows.findById(TRANSFER_ID).orElseThrow().status())
+                .isEqualTo(TransferStatus.AWAITING_LEDGER_POSTING);
+        assertThat(events.eventIds()).doesNotContain("event-ledger-wrong-currency");
+    }
+
+    @Test
+    void ledgerCompletionWithExtraLineIsRejectedWithoutProcessingEvent() {
+        reserve();
+
+        assertThatThrownBy(() -> processManager.handle(new LedgerPostingCompleted(
+                TRANSFER_ID,
+                "event-ledger-extra-line",
+                CORRELATION_ID,
+                "ledger-event-request-extra-line",
+                "posting-001",
+                POSTING_REQUEST_ID,
+                RESERVATION_REQUEST_ID,
+                "AED",
+                List.of(
+                        new LedgerPostingCompleted.Line(SOURCE_ACCOUNT_ID, "DEBIT", new BigDecimal("12.50")),
+                        new LedgerPostingCompleted.Line(DESTINATION_ACCOUNT_ID, "CREDIT", new BigDecimal("12.49")),
+                        new LedgerPostingCompleted.Line(
+                                UUID.fromString("44444444-4444-4444-4444-444444444444"),
+                                "CREDIT",
+                                new BigDecimal("0.01"))))))
+                .isInstanceOf(TransferConflictException.class);
+        assertThat(workflows.findById(TRANSFER_ID).orElseThrow().status())
+                .isEqualTo(TransferStatus.AWAITING_LEDGER_POSTING);
+        assertThat(events.eventIds()).doesNotContain("event-ledger-extra-line");
     }
 
     @Test
@@ -306,8 +400,7 @@ class TransferProcessManagerTest {
     @Test
     void duplicateEventIdDoesNotRepeatTransitionOrAction() {
         reserve();
-        var event = new LedgerPostingCompleted(
-                TRANSFER_ID, "event-ledger-003", CORRELATION_ID, "ledger-event-request-003", POSTING_REQUEST_ID);
+        var event = ledgerCompletion("event-ledger-003");
 
         processManager.handle(event);
         var retry = processManager.handle(event);
@@ -345,8 +438,7 @@ class TransferProcessManagerTest {
     void outOfOrderLedgerCompletionIsDeferredAndReplayedAfterReservation() {
         processManager.requestTransfer(command());
 
-        processManager.handle(new LedgerPostingCompleted(
-                TRANSFER_ID, "event-ledger-004", CORRELATION_ID, "ledger-event-request-004", POSTING_REQUEST_ID));
+        processManager.handle(ledgerCompletion("event-ledger-004"));
 
         var result = processManager.handle(new AccountReservationCreated(
                 TRANSFER_ID, "event-reservation-003", CORRELATION_ID, RESERVATION_REQUEST_ID, "reservation-001"));
@@ -400,6 +492,21 @@ class TransferProcessManagerTest {
                 "transfer-request-001",
                 RESERVATION_REQUEST_ID,
                 POSTING_REQUEST_ID);
+    }
+
+    private static LedgerPostingCompleted ledgerCompletion(String eventId) {
+        return new LedgerPostingCompleted(
+                TRANSFER_ID,
+                eventId,
+                CORRELATION_ID,
+                "ledger-event-request-" + eventId,
+                "posting-001",
+                POSTING_REQUEST_ID,
+                RESERVATION_REQUEST_ID,
+                "AED",
+                List.of(
+                        new LedgerPostingCompleted.Line(SOURCE_ACCOUNT_ID, "DEBIT", new BigDecimal("12.50")),
+                        new LedgerPostingCompleted.Line(DESTINATION_ACCOUNT_ID, "CREDIT", new BigDecimal("12.50"))));
     }
 
     private static final class InMemoryWorkflowRepository implements TransferWorkflowRepository {

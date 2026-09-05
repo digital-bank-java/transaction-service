@@ -39,6 +39,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
@@ -171,7 +172,7 @@ public class TransferProcessManager {
 
     @Transactional
     public WorkflowResult handle(LedgerPostingCompleted event) {
-        return handle(WorkflowEventRecord.from(event));
+        return handle(WorkflowEventRecord.from(event), transfer -> requireLedgerCompletionMatches(transfer, event));
     }
 
     @Transactional
@@ -185,10 +186,15 @@ public class TransferProcessManager {
     }
 
     private WorkflowResult handle(WorkflowEventRecord event) {
+        return handle(event, ignored -> {});
+    }
+
+    private WorkflowResult handle(WorkflowEventRecord event, Consumer<Transfer> eventValidator) {
         var transfer = workflowRepository.findById(event.transferId())
                 .orElseThrow(() -> new IllegalArgumentException("Transfer not found: " + event.transferId()));
         requireCorrelation(transfer, event.correlationId());
         requireEventIdentifiers(transfer, event);
+        eventValidator.accept(transfer);
 
         var previous = eventInbox.findByEventId(event.eventId());
         if (previous.isPresent()) {
@@ -259,6 +265,7 @@ public class TransferProcessManager {
     }
 
     private void applyLedgerCompleted(Transfer transfer, WorkflowEventRecord event) {
+        requireLedgerCompletionRecordMatches(transfer, event);
         var changed = transfer.ledgerPostingCompleted(event.postingRequestId(), event.correlationId());
         if (changed) {
             workflowRepository.save(transfer);
@@ -305,6 +312,50 @@ public class TransferProcessManager {
             } else if (deferred.eventType() == EventType.LEDGER_POSTING_FAILED) {
                 applyLedgerFailed(transfer, deferred, actions);
             }
+        }
+    }
+
+    private static void requireLedgerCompletionMatches(Transfer transfer, LedgerPostingCompleted event) {
+        if (event.reservationRequestId() != null) {
+            requireMatch(transfer.reservationRequestId(), event.reservationRequestId(), "reservationRequestId");
+        }
+        requireMatch(transfer.currency(), event.currency(), "currency");
+        var debitLines = event.lines().stream().filter(line -> line.lineType().equals("DEBIT")).toList();
+        var creditLines = event.lines().stream().filter(line -> line.lineType().equals("CREDIT")).toList();
+        if (event.lines().size() != 2 || debitLines.size() != 1 || creditLines.size() != 1) {
+            throw new TransferConflictException("ledger completion must contain exactly one debit and one credit line");
+        }
+        var debitLine = debitLines.getFirst();
+        var creditLine = creditLines.getFirst();
+        requireLedgerLine(transfer.sourceAccountId(), transfer.amount(), debitLine, "debit");
+        requireLedgerLine(transfer.destinationAccountId(), transfer.amount(), creditLine, "credit");
+    }
+
+    private static void requireLedgerCompletionRecordMatches(Transfer transfer, WorkflowEventRecord event) {
+        if (event.reservationRequestId() != null) {
+            requireMatch(transfer.reservationRequestId(), event.reservationRequestId(), "reservationRequestId");
+        }
+        requireMatch(transfer.currency(), event.currency(), "currency");
+        requireLedgerValue(transfer.sourceAccountId(), event.sourceAccountId(), "debit accountId");
+        requireLedgerValue(transfer.destinationAccountId(), event.destinationAccountId(), "credit accountId");
+        requireLedgerAmount(transfer.amount(), event.amount(), "ledger amount");
+    }
+
+    private static void requireLedgerLine(
+            UUID expectedAccountId, java.math.BigDecimal expectedAmount, LedgerPostingCompleted.Line line, String label) {
+        requireLedgerValue(expectedAccountId, line.accountId(), label + " accountId");
+        requireLedgerAmount(expectedAmount, line.amount(), label + " amount");
+    }
+
+    private static void requireLedgerValue(Object expected, Object actual, String field) {
+        if (!Objects.equals(expected, actual)) {
+            throw new TransferConflictException(field + " does not match transfer workflow");
+        }
+    }
+
+    private static void requireLedgerAmount(java.math.BigDecimal expected, java.math.BigDecimal actual, String field) {
+        if (actual == null || expected.compareTo(actual) != 0) {
+            throw new TransferConflictException(field + " does not match transfer workflow");
         }
     }
 

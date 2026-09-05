@@ -7,6 +7,7 @@ import com.digitalbank.transactionservice.application.port.in.LedgerPostingCompl
 import com.digitalbank.transactionservice.application.port.in.LedgerPostingFailed;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Optional;
@@ -39,6 +40,14 @@ class LedgerKafkaEventListenerTest {
         listener.onLedgerEvent(record(COMPLETED_TOPIC, payload));
 
         assertThat(processManager.lastEvent).isInstanceOf(LedgerPostingCompleted.class);
+        var event = (LedgerPostingCompleted) processManager.lastEvent;
+        assertThat(event.reservationRequestId()).isEqualTo(RESERVATION_REQUEST_ID);
+        assertThat(event.currency()).isEqualTo("AED");
+        assertThat(event.lines())
+                .extracting(LedgerPostingCompleted.Line::lineType, LedgerPostingCompleted.Line::amount)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("DEBIT", new BigDecimal("12.50")),
+                        org.assertj.core.groups.Tuple.tuple("CREDIT", new BigDecimal("12.50")));
     }
 
     @Test

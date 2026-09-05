@@ -130,17 +130,37 @@ public record WorkflowEventRecord(
     }
 
     public static WorkflowEventRecord from(LedgerPostingCompleted event) {
+        var debitLine = event.lines().stream()
+                .filter(line -> line.lineType().equals("DEBIT"))
+                .findFirst()
+                .orElse(null);
+        var creditLine = event.lines().stream()
+                .filter(line -> line.lineType().equals("CREDIT"))
+                .findFirst()
+                .orElse(null);
         return new WorkflowEventRecord(
                 event.eventId(),
                 event.transferId(),
                 EventType.LEDGER_POSTING_COMPLETED,
                 event.correlationId(),
                 event.requestId(),
-                null,
+                event.reservationRequestId(),
                 null,
                 event.postingRequestId(),
                 null,
-                EventStatus.PROCESSED);
+                EventStatus.PROCESSED,
+                null,
+                null,
+                null,
+                null,
+                null,
+                debitLine == null ? null : debitLine.accountId(),
+                creditLine == null ? null : creditLine.accountId(),
+                debitLine == null ? null : debitLine.amount(),
+                event.currency(),
+                null,
+                null,
+                null);
     }
 
     public static WorkflowEventRecord from(LedgerPostingFailed event) {

@@ -6,6 +6,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -22,14 +24,18 @@ final class LedgerEventPayloads {
         if (!text(payload, "aggregateId").equals(text(payload, "postingId"))) {
             throw new LedgerEventValidationException("aggregateId must match postingId");
         }
-        currency(payload);
-        lines(payload);
+        var currency = currency(payload);
+        var lines = lines(payload);
         return new LedgerPostingCompleted(
                 uuid(payload, "transactionId"),
                 text(payload, "eventId"),
                 text(payload, "correlationId"),
                 text(payload, "causationId"),
-                text(payload, "postingRequestId"));
+                text(payload, "postingId"),
+                text(payload, "postingRequestId"),
+                text(payload, "reservationRequestId"),
+                currency,
+                lines);
     }
 
     static LedgerPostingFailed failed(ConsumerRecord<String, String> record, ObjectMapper mapper) {
@@ -88,25 +94,28 @@ final class LedgerEventPayloads {
         }
     }
 
-    private static void currency(JsonNode payload) {
+    private static String currency(JsonNode payload) {
         var value = text(payload, "currency");
         if (!value.matches("[A-Z]{3}")) {
             throw new LedgerEventValidationException("currency must be an uppercase ISO-4217 code");
         }
+        return value;
     }
 
-    private static void lines(JsonNode payload) {
+    private static List<LedgerPostingCompleted.Line> lines(JsonNode payload) {
         var lines = payload.get("lines");
         if (lines == null || !lines.isArray() || lines.isEmpty()) {
             throw new LedgerEventValidationException("lines must contain at least one ledger line");
         }
         var types = new java.util.HashSet<String>();
+        var parsed = new ArrayList<LedgerPostingCompleted.Line>();
         lines.forEach(line -> {
             if (line == null || !line.isObject()) {
                 throw new LedgerEventValidationException("ledger lines must be objects");
             }
+            UUID accountId;
             try {
-                UUID.fromString(text(line, "accountId"));
+                accountId = UUID.fromString(text(line, "accountId"));
             } catch (IllegalArgumentException exception) {
                 throw new LedgerEventValidationException("accountId must be a UUID", exception);
             }
@@ -127,10 +136,12 @@ final class LedgerEventPayloads {
             } catch (NumberFormatException exception) {
                 throw new LedgerEventValidationException("ledger line amount must be a decimal", exception);
             }
+            parsed.add(new LedgerPostingCompleted.Line(accountId, type, new BigDecimal(amount)));
         });
         if (!types.contains("DEBIT") || !types.contains("CREDIT")) {
             throw new LedgerEventValidationException("lines must contain at least one debit and one credit");
         }
+        return List.copyOf(parsed);
     }
 
     private static void oneOf(JsonNode payload, String field, Set<String> allowed) {
