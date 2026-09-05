@@ -297,7 +297,7 @@ Config Server supplies only the non-sensitive `server.port` setting.
 Build the deployable image:
 
 ```bash
-docker build -t digital-bank-java/transaction-service:0.0.4 .
+docker build -t digital-bank-java/transaction-service:0.0.5 .
 ```
 
 Run it against Config Server reachable from the host:
@@ -308,7 +308,7 @@ docker run --rm \
   --publish 8084:8084 \
   --env CONFIG_SERVER_URL=http://host.docker.internal:8888 \
   --env SPRING_PROFILES_ACTIVE=sit \
-  digital-bank-java/transaction-service:0.0.4
+  digital-bank-java/transaction-service:0.0.5
 ```
 
 The runtime image runs as numeric non-root user and group `10001:10001` and
