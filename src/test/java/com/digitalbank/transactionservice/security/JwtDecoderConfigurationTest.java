@@ -8,7 +8,10 @@ import com.nimbusds.jose.jwk.OctetSequenceKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import java.time.Instant;
 import java.util.Base64;
-import org.junit.jupiter.api.Test;
+import java.util.stream.Stream;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.mock.env.MockEnvironment;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
@@ -17,23 +20,24 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 
 class JwtDecoderConfigurationTest {
 
-    private static final String JWT_SECRET = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
     private static final String JWT_ISSUER = "digital-bank-auth";
 
-    @Test
-    void decodesAuthServiceHmacToken() {
+    @ParameterizedTest
+    @MethodSource("hmacSecrets")
+    void decodesAuthServiceHmacToken(int secretLength, MacAlgorithm macAlgorithm) {
+        String jwtSecret = Base64.getEncoder().encodeToString(new byte[secretLength]);
         var environment = new MockEnvironment()
-                .withProperty("auth.jwt.secret", JWT_SECRET)
+                .withProperty("auth.jwt.secret", jwtSecret)
                 .withProperty("auth.jwt.issuer", JWT_ISSUER);
         var decoder = new JwtDecoderConfiguration().jwtDecoder(environment);
         var now = Instant.now();
-        var signingKey = new OctetSequenceKey.Builder(Base64.getDecoder().decode(JWT_SECRET))
-                .algorithm(JWSAlgorithm.HS256)
+        var signingKey = new OctetSequenceKey.Builder(Base64.getDecoder().decode(jwtSecret))
+                .algorithm(JWSAlgorithm.parse(macAlgorithm.getName()))
                 .keyID("test")
                 .build();
         var token = new NimbusJwtEncoder(new ImmutableJWKSet<>(new JWKSet(signingKey)))
                 .encode(JwtEncoderParameters.from(
-                        org.springframework.security.oauth2.jwt.JwsHeader.with(MacAlgorithm.HS256).build(),
+                        org.springframework.security.oauth2.jwt.JwsHeader.with(macAlgorithm).build(),
                         JwtClaimsSet.builder()
                         .issuer(JWT_ISSUER)
                         .subject("transfer-orchestrator")
@@ -44,5 +48,12 @@ class JwtDecoderConfigurationTest {
                 .getTokenValue();
 
         assertThat(decoder.decode(token).getSubject()).isEqualTo("transfer-orchestrator");
+    }
+
+    private static Stream<Arguments> hmacSecrets() {
+        return Stream.of(
+                Arguments.of(32, MacAlgorithm.HS256),
+                Arguments.of(48, MacAlgorithm.HS384),
+                Arguments.of(64, MacAlgorithm.HS512));
     }
 }

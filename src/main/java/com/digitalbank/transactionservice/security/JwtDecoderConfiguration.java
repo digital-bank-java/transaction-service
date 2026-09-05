@@ -34,8 +34,11 @@ class JwtDecoderConfiguration {
 
         String secret = requiredProperty(environment, "auth.jwt.secret");
         String issuer = requiredProperty(environment, "auth.jwt.issuer");
-        var decoder = NimbusJwtDecoder.withSecretKey(new SecretKeySpec(decodeSecret(secret), "HmacSHA256"))
-                .macAlgorithm(MacAlgorithm.HS256)
+        byte[] decodedSecret = decodeSecret(secret);
+        MacAlgorithm macAlgorithm = macAlgorithmFor(decodedSecret.length);
+        var decoder = NimbusJwtDecoder.withSecretKey(
+                        new SecretKeySpec(decodedSecret, jcaAlgorithmFor(macAlgorithm)))
+                .macAlgorithm(macAlgorithm)
                 .build();
         decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(issuer));
         return decoder;
@@ -66,5 +69,23 @@ class JwtDecoderConfiguration {
         } catch (IllegalArgumentException exception) {
             throw new IllegalStateException("auth.jwt.secret must be valid base64", exception);
         }
+    }
+
+    private static MacAlgorithm macAlgorithmFor(int secretLength) {
+        if (secretLength >= 64) {
+            return MacAlgorithm.HS512;
+        }
+        if (secretLength >= 48) {
+            return MacAlgorithm.HS384;
+        }
+        return MacAlgorithm.HS256;
+    }
+
+    private static String jcaAlgorithmFor(MacAlgorithm macAlgorithm) {
+        return switch (macAlgorithm) {
+            case HS512 -> "HmacSHA512";
+            case HS384 -> "HmacSHA384";
+            case HS256 -> "HmacSHA256";
+        };
     }
 }
