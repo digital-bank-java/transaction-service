@@ -35,7 +35,8 @@ public record WorkflowEventRecord(
         String currency,
         Instant verifiedAt,
         Instant expiresAt,
-        String policyVersion) {
+        String policyVersion,
+        String postingId) {
 
     public WorkflowEventRecord {
         eventId = requireText(eventId, "eventId");
@@ -54,6 +55,7 @@ public record WorkflowEventRecord(
         assuranceType = optionalText(assuranceType);
         challengeType = optionalText(challengeType);
         policyVersion = optionalText(policyVersion);
+        postingId = optionalText(postingId);
     }
 
     public WorkflowEventRecord(
@@ -68,7 +70,8 @@ public record WorkflowEventRecord(
             String reason,
             EventStatus status) {
         this(eventId, transferId, eventType, correlationId, requestId, reservationRequestId, reservationId,
-                postingRequestId, reason, status, null, null, null, null, null, null, null, null, null, null, null, null);
+                postingRequestId, reason, status, null, null, null, null, null, null, null, null, null, null, null, null,
+                null);
     }
 
     public static WorkflowEventRecord from(AccountReservationCreated event) {
@@ -91,7 +94,7 @@ public record WorkflowEventRecord(
                 event.correlationId(), event.reservationRequestId(), event.reservationRequestId(),
                 event.reservationId(), null, null, EventStatus.PROCESSED, null, null, null, null, null,
                 event.sourceAccountId(), event.destinationAccountId(), event.amount(), event.currency(), null,
-                event.expiresAt(), null);
+                event.expiresAt(), null, null);
     }
 
     public static WorkflowEventRecord from(AccountReservationRejected event) {
@@ -114,7 +117,7 @@ public record WorkflowEventRecord(
                 event.correlationId(), event.requestId(), event.reservationRequestId(), null, null, null,
                 EventStatus.PROCESSED, event.decisionId(), event.customerId(), event.challengeId(),
                 event.assuranceType(), event.challengeType(), event.sourceAccountId(), event.destinationAccountId(), event.amount(),
-                event.currency(), event.grantedAt(), event.expiresAt(), event.policyVersion());
+                event.currency(), event.grantedAt(), event.expiresAt(), event.policyVersion(), null);
     }
 
     public static WorkflowEventRecord from(AccountReservationReleased event) {
@@ -162,7 +165,8 @@ public record WorkflowEventRecord(
                 event.currency(),
                 null,
                 null,
-                null);
+                null,
+                event.postingId());
     }
 
     public static WorkflowEventRecord from(LedgerPostingFailed event) {
@@ -192,7 +196,7 @@ public record WorkflowEventRecord(
                 reason,
                 EventStatus.DEFERRED,
                 decisionId, subjectId, challengeId, assuranceType, challengeType, sourceAccountId, destinationAccountId,
-                amount, currency, verifiedAt, expiresAt, policyVersion);
+                amount, currency, verifiedAt, expiresAt, policyVersion, postingId);
     }
 
     public WorkflowEventRecord processed() {
@@ -208,7 +212,7 @@ public record WorkflowEventRecord(
                 reason,
                 EventStatus.PROCESSED,
                 decisionId, subjectId, challengeId, assuranceType, challengeType, sourceAccountId, destinationAccountId,
-                amount, currency, verifiedAt, expiresAt, policyVersion);
+                amount, currency, verifiedAt, expiresAt, policyVersion, postingId);
     }
 
     public boolean isDeferred() {

@@ -43,6 +43,9 @@ class WorkflowEventJpaEntity {
     @Column(name = "posting_request_id", length = 100)
     private String postingRequestId;
 
+    @Column(name = "posting_id", length = 150)
+    private String postingId;
+
     @Column(name = "reason", length = 500)
     private String reason;
 
@@ -100,6 +103,7 @@ class WorkflowEventJpaEntity {
         this.reservationRequestId = event.reservationRequestId();
         this.reservationId = event.reservationId();
         this.postingRequestId = event.postingRequestId();
+        this.postingId = event.postingId();
         this.reason = event.reason();
         this.status = event.status();
         this.decisionId = event.decisionId();
@@ -140,7 +144,8 @@ class WorkflowEventJpaEntity {
                 currency,
                 verifiedAt,
                 expiresAt,
-                policyVersion);
+                policyVersion,
+                postingId);
     }
 
     String eventId() { return eventId; }

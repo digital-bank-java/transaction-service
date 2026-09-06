@@ -145,19 +145,22 @@ class TransferWorkflowPersistenceIT {
     @Test
     void persistsDeferredEventAndReplaysItAfterReservation() {
         processManager.requestTransfer(command());
-        processManager.handle(new LedgerPostingCompleted(
+        var ledgerEvent = new LedgerPostingCompleted(
                 transferId,
                 "persisted-ledger-event",
                 correlationId,
                 "ledger-event-request",
-                UUID.randomUUID().toString(),
+                "posting-001",
                 postingRequestId,
                 reservationRequestId,
                 "AED",
                 List.of(
                         new LedgerPostingCompleted.Line(sourceAccountId, "DEBIT", new BigDecimal("17.25")),
-                        new LedgerPostingCompleted.Line(destinationAccountId, "CREDIT", new BigDecimal("17.25")))));
+                        new LedgerPostingCompleted.Line(destinationAccountId, "CREDIT", new BigDecimal("17.25"))));
+        processManager.handle(ledgerEvent);
 
+        assertThat(eventInbox.findByEventId(ledgerEvent.eventId()))
+                .hasValueSatisfying(event -> assertThat(event.postingId()).isEqualTo("posting-001"));
         assertThat(eventInbox.findDeferredByTransferId(transferId)).hasSize(1);
 
         var result = processManager.handle(new AccountReservationCreated(

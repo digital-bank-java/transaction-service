@@ -467,6 +467,28 @@ class TransferProcessManagerTest {
     }
 
     @Test
+    void conflictingLedgerPostingIdWithSameEventIdIsRejected() {
+        reserve();
+        var event = ledgerCompletion("event-ledger-posting-conflict");
+        processManager.handle(event);
+
+        var conflicting = new LedgerPostingCompleted(
+                TRANSFER_ID,
+                event.eventId(),
+                CORRELATION_ID,
+                event.requestId(),
+                "posting-002",
+                POSTING_REQUEST_ID,
+                RESERVATION_REQUEST_ID,
+                "AED",
+                event.lines());
+
+        assertThatThrownBy(() -> processManager.handle(conflicting))
+                .isInstanceOf(TransferConflictException.class)
+                .hasMessageContaining("eventId");
+    }
+
+    @Test
     void usesAtomicWorkflowCreationBeforeReadingAnExistingRequest() {
         var repository = new AtomicCreationOnlyWorkflowRepository();
         var manager = new TransferProcessManager(repository, events, actions, outbox);
