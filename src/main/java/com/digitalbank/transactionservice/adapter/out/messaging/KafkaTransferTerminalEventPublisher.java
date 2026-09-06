@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.env.Environment;
@@ -33,7 +34,7 @@ class KafkaTransferTerminalEventPublisher {
     private final long retryDelayMs;
 
     KafkaTransferTerminalEventPublisher(
-            KafkaTemplate<String, String> kafkaTemplate,
+            @Qualifier("ledgerKafkaTemplate") KafkaTemplate<String, String> kafkaTemplate,
             TransferTerminalEventOutbox outbox,
             ObjectMapper objectMapper,
             Environment environment) {
