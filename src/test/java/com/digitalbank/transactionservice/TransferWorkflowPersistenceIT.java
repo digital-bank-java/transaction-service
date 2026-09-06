@@ -24,6 +24,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -174,7 +175,7 @@ class TransferWorkflowPersistenceIT {
     @Test
     void persistsReservationAcceptanceDetailsForReplayConflictDetection() {
         processManager.requestTransfer(command());
-        var expiry = Instant.now().plusSeconds(300);
+        var expiry = Instant.now().plusSeconds(300).truncatedTo(ChronoUnit.MICROS);
         var accepted = new AccountReservationAccepted(
                 transferId,
                 "persisted-reservation-accepted",
