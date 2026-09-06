@@ -410,6 +410,7 @@ public class TransferProcessManager {
                 && Objects.equals(previous.reservationRequestId(), current.reservationRequestId())
                 && Objects.equals(previous.reservationId(), current.reservationId())
                 && Objects.equals(previous.postingRequestId(), current.postingRequestId())
+                && Objects.equals(previous.postingId(), current.postingId())
                 && Objects.equals(previous.reason(), current.reason())
                 && Objects.equals(previous.decisionId(), current.decisionId())
                 && Objects.equals(previous.subjectId(), current.subjectId())
