@@ -44,15 +44,16 @@ final class ReservationEventPayloads {
     static AccountReservationAccepted accepted(ConsumerRecord<String, String> record, ObjectMapper mapper) {
         var payload = common(record, mapper, "AccountReservationAccepted.v1");
         var reservationId = uuid(payload, "reservationId");
-        uuid(payload, "sourceAccountId");
-        uuid(payload, "destinationAccountId");
-        positiveAmount(payload);
-        currency(payload);
-        instant(payload, "expiresAt");
+        var sourceAccountId = uuid(payload, "sourceAccountId");
+        var destinationAccountId = uuid(payload, "destinationAccountId");
+        var amount = positiveAmount(payload);
+        var currency = currency(payload);
+        var expiresAt = instant(payload, "expiresAt");
         equalsText(payload, "status", "ACTIVE");
         return new AccountReservationAccepted(
                 uuid(payload, "transactionId"), text(payload, "eventId"), text(payload, "correlationId"),
-                text(payload, "reservationRequestId"), reservationId.toString());
+                text(payload, "reservationRequestId"), reservationId.toString(), sourceAccountId,
+                destinationAccountId, amount, currency, expiresAt);
     }
 
     static AccountReservationRejected rejected(ConsumerRecord<String, String> record, ObjectMapper mapper) {
@@ -143,21 +144,24 @@ final class ReservationEventPayloads {
         }
     }
 
-    private static void positiveAmount(JsonNode payload) {
+    private static BigDecimal positiveAmount(JsonNode payload) {
         try {
-            if (new BigDecimal(text(payload, "amount")).signum() <= 0) {
+            var amount = new BigDecimal(text(payload, "amount"));
+            if (amount.signum() <= 0) {
                 throw new ReservationEventValidationException("amount must be positive");
             }
+            return amount;
         } catch (NumberFormatException exception) {
             throw new ReservationEventValidationException("amount must be a decimal", exception);
         }
     }
 
-    private static void currency(JsonNode payload) {
+    private static String currency(JsonNode payload) {
         var value = text(payload, "currency");
         if (!value.matches("[A-Z]{3}")) {
             throw new ReservationEventValidationException("currency must be an uppercase ISO-4217 code");
         }
+        return value;
     }
 
     private static void equalsText(JsonNode payload, String field, String expected) {

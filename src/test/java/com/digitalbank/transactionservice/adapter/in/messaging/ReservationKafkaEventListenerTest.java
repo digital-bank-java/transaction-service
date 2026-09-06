@@ -47,6 +47,13 @@ class ReservationKafkaEventListenerTest {
         listener.onReservationEvent(record("account.reservation.accepted.v1", payload));
 
         assertThat(processManager.lastEvent).isInstanceOf(AccountReservationAccepted.class);
+        var accepted = (AccountReservationAccepted) processManager.lastEvent;
+        assertThat(accepted.sourceAccountId()).isEqualTo(UUID.fromString(payload.get("sourceAccountId").textValue()));
+        assertThat(accepted.destinationAccountId())
+                .isEqualTo(UUID.fromString(payload.get("destinationAccountId").textValue()));
+        assertThat(accepted.amount()).isEqualByComparingTo("12.50");
+        assertThat(accepted.currency()).isEqualTo("AED");
+        assertThat(accepted.expiresAt()).isEqualTo(Instant.parse("2026-09-01T00:05:00Z"));
     }
 
     @Test

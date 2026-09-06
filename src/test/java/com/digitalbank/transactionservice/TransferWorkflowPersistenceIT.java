@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.digitalbank.transactionservice.application.port.in.AccountReservationCreated;
+import com.digitalbank.transactionservice.application.port.in.AccountReservationAccepted;
 import com.digitalbank.transactionservice.application.port.in.LedgerPostingCompleted;
 import com.digitalbank.transactionservice.application.port.in.RequestTransferCommand;
 import com.digitalbank.transactionservice.application.port.out.TransferWorkflowRepository;
@@ -12,6 +13,7 @@ import com.digitalbank.transactionservice.application.port.out.TransferCreatedEv
 import com.digitalbank.transactionservice.application.port.out.WorkflowEventInbox;
 import com.digitalbank.transactionservice.application.service.TransferProcessManager;
 import com.digitalbank.transactionservice.application.service.WorkflowResult;
+import com.digitalbank.transactionservice.domain.TransferConflictException;
 import com.digitalbank.transactionservice.domain.TransferStatus;
 import jakarta.persistence.OptimisticLockException;
 import java.math.BigDecimal;
@@ -22,6 +24,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -167,6 +170,46 @@ class TransferWorkflowPersistenceIT {
         assertThat(result.transfer().status()).isEqualTo(TransferStatus.COMPLETED);
         assertThat(eventInbox.findDeferredByTransferId(transferId)).isEmpty();
         assertThat(count("transfer_workflow_actions", transferId)).isEqualTo(1);
+    }
+
+    @Test
+    void persistsReservationAcceptanceDetailsForReplayConflictDetection() {
+        processManager.requestTransfer(command());
+        var expiry = Instant.now().plusSeconds(300).truncatedTo(ChronoUnit.MICROS);
+        var accepted = new AccountReservationAccepted(
+                transferId,
+                "persisted-reservation-accepted",
+                correlationId,
+                reservationRequestId,
+                "reservation-001",
+                sourceAccountId,
+                destinationAccountId,
+                new BigDecimal("17.25"),
+                "AED",
+                expiry);
+
+        processManager.handle(accepted);
+
+        assertThat(eventInbox.findByEventId(accepted.eventId())).hasValueSatisfying(event -> {
+            assertThat(event.sourceAccountId()).isEqualTo(sourceAccountId);
+            assertThat(event.destinationAccountId()).isEqualTo(destinationAccountId);
+            assertThat(event.amount()).isEqualByComparingTo("17.25");
+            assertThat(event.currency()).isEqualTo("AED");
+            assertThat(event.expiresAt()).isEqualTo(expiry);
+        });
+        assertThatThrownBy(() -> processManager.handle(new AccountReservationAccepted(
+                transferId,
+                accepted.eventId(),
+                correlationId,
+                reservationRequestId,
+                "reservation-001",
+                sourceAccountId,
+                destinationAccountId,
+                new BigDecimal("17.25"),
+                "AED",
+                expiry.plusSeconds(1))))
+                .isInstanceOf(TransferConflictException.class)
+                .hasMessageContaining("eventId");
     }
 
     @Test
