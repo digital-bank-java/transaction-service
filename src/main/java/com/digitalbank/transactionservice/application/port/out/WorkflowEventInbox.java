@@ -8,6 +8,11 @@ public interface WorkflowEventInbox {
 
     Optional<WorkflowEventRecord> findByEventId(String eventId);
 
+    default Optional<WorkflowEventRecord> findLatestByTransferIdAndEventType(
+            UUID transferId, WorkflowEventRecord.EventType eventType) {
+        return Optional.empty();
+    }
+
     void defer(WorkflowEventRecord event);
 
     void recordProcessed(WorkflowEventRecord event);

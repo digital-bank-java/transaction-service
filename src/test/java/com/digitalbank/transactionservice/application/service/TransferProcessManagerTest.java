@@ -16,6 +16,8 @@ import com.digitalbank.transactionservice.application.port.out.ReservationComman
 import com.digitalbank.transactionservice.application.port.out.ReservationCommandEventOutbox;
 import com.digitalbank.transactionservice.application.port.out.TransferCreatedEvent;
 import com.digitalbank.transactionservice.application.port.out.TransferCreatedEventOutbox;
+import com.digitalbank.transactionservice.application.port.out.TransferTerminalEvent;
+import com.digitalbank.transactionservice.application.port.out.TransferTerminalEventOutbox;
 import com.digitalbank.transactionservice.application.port.out.TransferWorkflowRepository;
 import com.digitalbank.transactionservice.application.port.out.LedgerCommandEvent;
 import com.digitalbank.transactionservice.application.port.out.LedgerCommandEventOutbox;
@@ -27,7 +29,9 @@ import com.digitalbank.transactionservice.domain.Transfer;
 import com.digitalbank.transactionservice.domain.TransferConflictException;
 import com.digitalbank.transactionservice.domain.TransferStatus;
 import com.digitalbank.transactionservice.risk.TransferRiskDecision;
+import com.digitalbank.transactionservice.risk.ConfiguredTransferRiskEvaluator;
 import com.digitalbank.transactionservice.risk.TransferRiskEvaluator;
+import com.digitalbank.transactionservice.risk.TransferRiskProperties;
 import com.digitalbank.transactionservice.risk.TransferRiskOutcome;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -56,6 +60,7 @@ class TransferProcessManagerTest {
     private InMemoryActionRepository actions;
     private InMemoryTransferCreatedEventOutbox outbox;
     private InMemoryLedgerCommandEventOutbox ledgerOutbox;
+    private InMemoryTransferTerminalEventOutbox terminalOutbox;
     private TransferProcessManager processManager;
 
     @BeforeEach
@@ -65,8 +70,10 @@ class TransferProcessManagerTest {
         actions = new InMemoryActionRepository();
         outbox = new InMemoryTransferCreatedEventOutbox();
         ledgerOutbox = new InMemoryLedgerCommandEventOutbox();
+        terminalOutbox = new InMemoryTransferTerminalEventOutbox();
         processManager = new TransferProcessManager(workflows, events, actions, outbox,
-                new InMemoryReservationCommandEventOutbox(), ledgerOutbox);
+                new InMemoryReservationCommandEventOutbox(), ledgerOutbox, terminalOutbox,
+                defaultRiskEvaluator());
     }
 
     @Test
@@ -311,6 +318,22 @@ class TransferProcessManagerTest {
     }
 
     @Test
+    void ledgerCompletionRecordsOneTerminalCompletedEvent() {
+        reserve();
+
+        processManager.handle(ledgerCompletion("event-ledger-terminal-completed"));
+        processManager.handle(ledgerCompletion("event-ledger-terminal-retry"));
+
+        assertThat(terminalOutbox.events()).singleElement().satisfies(event -> {
+            assertThat(event).isInstanceOf(com.digitalbank.transactionservice.application.port.out.TransferCompletedEvent.class);
+            assertThat(event.eventType()).isEqualTo("TransferCompleted.v1");
+            assertThat(event.status()).isEqualTo("COMPLETED");
+            assertThat(event.postingId()).isEqualTo("posting-001");
+            assertThat(event.causationId()).isEqualTo("event-ledger-terminal-completed");
+        });
+    }
+
+    @Test
     void ledgerCompletionWithMismatchedDestinationIsRejectedWithoutProcessingEvent() {
         reserve();
 
@@ -406,7 +429,7 @@ class TransferProcessManagerTest {
     }
 
     @Test
-    void ledgerFailureWaitsForReleaseFactAfterRecordingReleaseAction() {
+    void ledgerFailureWaitsForAccountOwnedReleaseFactWithoutRecordingReleaseAction() {
         reserve();
 
         var result = processManager.handle(new LedgerPostingFailed(
@@ -418,8 +441,7 @@ class TransferProcessManagerTest {
                 "unbalanced posting"));
 
         assertThat(result.transfer().status()).isEqualTo(TransferStatus.AWAITING_RESERVATION_RELEASE);
-        assertThat(result.actions()).hasSize(1);
-        assertThat(result.actions().getFirst().actionId()).isEqualTo("release-reservation:reservation-001");
+        assertThat(result.actions()).isEmpty();
     }
 
     @Test
@@ -439,6 +461,31 @@ class TransferProcessManagerTest {
 
         assertThat(result.transfer().status()).isEqualTo(TransferStatus.FAILED);
         assertThat(result.actions()).isEmpty();
+    }
+
+    @Test
+    void releasedReservationRecordsCompensatedTerminalFailureEvent() {
+        reserve();
+        processManager.handle(new LedgerPostingFailed(
+                TRANSFER_ID,
+                "event-ledger-terminal-failed",
+                CORRELATION_ID,
+                "ledger-event-request-terminal-failed",
+                POSTING_REQUEST_ID,
+                "unbalanced posting"));
+
+        processManager.handle(new AccountReservationReleased(
+                TRANSFER_ID, "event-reservation-terminal-released", CORRELATION_ID,
+                RESERVATION_REQUEST_ID, "reservation-001"));
+
+        assertThat(terminalOutbox.events()).singleElement().satisfies(event -> {
+            assertThat(event).isInstanceOf(com.digitalbank.transactionservice.application.port.out.TransferFailedEvent.class);
+            assertThat(event.eventType()).isEqualTo("TransferFailed.v1");
+            assertThat(event.status()).isEqualTo("FAILED");
+            assertThat(event.failureCode()).isEqualTo("LEDGER_POSTING_FAILED");
+            assertThat(event.compensationStatus()).isEqualTo("COMPLETED");
+            assertThat(event.manualReviewRequired()).isFalse();
+        });
     }
 
     @Test
@@ -570,6 +617,15 @@ class TransferProcessManagerTest {
                 "transfer-request-001",
                 RESERVATION_REQUEST_ID,
                 POSTING_REQUEST_ID);
+    }
+
+    private static TransferRiskEvaluator defaultRiskEvaluator() {
+        return new ConfiguredTransferRiskEvaluator(new TransferRiskProperties(
+                "test-policy",
+                java.time.Duration.ofMinutes(5),
+                Map.of(),
+                Set.of(),
+                Set.of()));
     }
 
     private static LedgerPostingCompleted ledgerCompletion(String eventId) {
@@ -752,6 +808,35 @@ class TransferProcessManagerTest {
         public void markFailed(LedgerCommandEvent event, UUID claimToken, String error, Instant retryAt) {}
 
         List<LedgerCommandEvent> events() {
+            return values;
+        }
+    }
+
+    private static final class InMemoryTransferTerminalEventOutbox implements TransferTerminalEventOutbox {
+        private final List<TransferTerminalEvent> values = new ArrayList<>();
+
+        @Override
+        public boolean recordIfAbsent(TransferTerminalEvent event) {
+            if (values.stream().anyMatch(existing -> existing.eventId().equals(event.eventId()))) {
+                return false;
+            }
+            values.add(event);
+            return true;
+        }
+
+        @Override
+        public List<TransferTerminalEvent> claimReady(
+                int limit, Instant now, UUID claimToken, Instant leaseUntil) {
+            return List.of();
+        }
+
+        @Override
+        public void markPublished(TransferTerminalEvent event, UUID claimToken, Instant publishedAt) {}
+
+        @Override
+        public void markFailed(TransferTerminalEvent event, UUID claimToken, String error, Instant retryAt) {}
+
+        List<TransferTerminalEvent> events() {
             return values;
         }
     }
