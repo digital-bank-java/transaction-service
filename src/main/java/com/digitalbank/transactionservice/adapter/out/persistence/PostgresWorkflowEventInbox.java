@@ -23,6 +23,14 @@ class PostgresWorkflowEventInbox implements WorkflowEventInbox {
     }
 
     @Override
+    public Optional<WorkflowEventRecord> findLatestByTransferIdAndEventType(
+            UUID transferId, WorkflowEventRecord.EventType eventType) {
+        return repository.findFirstByTransferIdAndEventTypeAndStatusOrderByCreatedAtDesc(
+                        transferId, eventType, EventStatus.PROCESSED)
+                .map(WorkflowEventJpaEntity::toRecord);
+    }
+
+    @Override
     public void defer(WorkflowEventRecord event) {
         repository.saveAndFlush(new WorkflowEventJpaEntity(event.deferred()));
     }

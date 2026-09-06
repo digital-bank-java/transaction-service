@@ -6,5 +6,4 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 @Configuration
 @EnableScheduling
-@ConditionalOnProperty(name = "transaction.events.transfer-created.enabled", havingValue = "true")
 class TransferEventPublishingConfiguration {}

@@ -14,6 +14,10 @@ import com.digitalbank.transactionservice.application.port.out.RequestAccountRes
 import com.digitalbank.transactionservice.application.port.out.RequestLedgerPosting;
 import com.digitalbank.transactionservice.application.port.out.TransferCreatedEvent;
 import com.digitalbank.transactionservice.application.port.out.TransferCreatedEventOutbox;
+import com.digitalbank.transactionservice.application.port.out.TransferCompletedEvent;
+import com.digitalbank.transactionservice.application.port.out.TransferFailedEvent;
+import com.digitalbank.transactionservice.application.port.out.TransferTerminalEvent;
+import com.digitalbank.transactionservice.application.port.out.TransferTerminalEventOutbox;
 import com.digitalbank.transactionservice.application.port.out.TransferWorkflowRepository;
 import com.digitalbank.transactionservice.application.port.out.LedgerCommandEventOutbox;
 import com.digitalbank.transactionservice.application.port.out.LedgerPostingRequestedEvent;
@@ -51,6 +55,7 @@ public class TransferProcessManager {
     private final WorkflowEventInbox eventInbox;
     private final WorkflowActionRepository actionRepository;
     private final TransferCreatedEventOutbox transferCreatedEventOutbox;
+    private final TransferTerminalEventOutbox transferTerminalEventOutbox;
     private final ReservationCommandEventOutbox reservationCommandEventOutbox;
     private final LedgerCommandEventOutbox ledgerCommandEventOutbox;
     private final TransferRiskEvaluator riskEvaluator;
@@ -61,7 +66,8 @@ public class TransferProcessManager {
             WorkflowActionRepository actionRepository,
             TransferCreatedEventOutbox transferCreatedEventOutbox) {
         this(workflowRepository, eventInbox, actionRepository, transferCreatedEventOutbox,
-                new NoOpReservationCommandEventOutbox(), new NoOpLedgerCommandEventOutbox(), legacyRiskEvaluator());
+                new NoOpReservationCommandEventOutbox(), new NoOpLedgerCommandEventOutbox(),
+                new NoOpTransferTerminalEventOutbox(), legacyRiskEvaluator());
     }
 
     public TransferProcessManager(
@@ -72,7 +78,21 @@ public class TransferProcessManager {
             ReservationCommandEventOutbox reservationCommandEventOutbox,
             LedgerCommandEventOutbox ledgerCommandEventOutbox) {
         this(workflowRepository, eventInbox, actionRepository, transferCreatedEventOutbox,
-                reservationCommandEventOutbox, ledgerCommandEventOutbox, legacyRiskEvaluator());
+                reservationCommandEventOutbox, ledgerCommandEventOutbox,
+                new NoOpTransferTerminalEventOutbox(), legacyRiskEvaluator());
+    }
+
+    public TransferProcessManager(
+            TransferWorkflowRepository workflowRepository,
+            WorkflowEventInbox eventInbox,
+            WorkflowActionRepository actionRepository,
+            TransferCreatedEventOutbox transferCreatedEventOutbox,
+            ReservationCommandEventOutbox reservationCommandEventOutbox,
+            LedgerCommandEventOutbox ledgerCommandEventOutbox,
+            TransferRiskEvaluator riskEvaluator) {
+        this(workflowRepository, eventInbox, actionRepository, transferCreatedEventOutbox,
+                reservationCommandEventOutbox, ledgerCommandEventOutbox,
+                new NoOpTransferTerminalEventOutbox(), riskEvaluator);
     }
 
     @Autowired
@@ -83,12 +103,15 @@ public class TransferProcessManager {
             TransferCreatedEventOutbox transferCreatedEventOutbox,
             ReservationCommandEventOutbox reservationCommandEventOutbox,
             LedgerCommandEventOutbox ledgerCommandEventOutbox,
+            TransferTerminalEventOutbox transferTerminalEventOutbox,
             TransferRiskEvaluator riskEvaluator) {
         this.workflowRepository = Objects.requireNonNull(workflowRepository, "workflowRepository must not be null");
         this.eventInbox = Objects.requireNonNull(eventInbox, "eventInbox must not be null");
         this.actionRepository = Objects.requireNonNull(actionRepository, "actionRepository must not be null");
         this.transferCreatedEventOutbox = Objects.requireNonNull(
                 transferCreatedEventOutbox, "transferCreatedEventOutbox must not be null");
+        this.transferTerminalEventOutbox = Objects.requireNonNull(
+                transferTerminalEventOutbox, "transferTerminalEventOutbox must not be null");
         this.reservationCommandEventOutbox = Objects.requireNonNull(
                 reservationCommandEventOutbox, "reservationCommandEventOutbox must not be null");
         this.ledgerCommandEventOutbox = Objects.requireNonNull(
@@ -243,15 +266,28 @@ public class TransferProcessManager {
         var changed = transfer.accountReservationRejected();
         if (changed) {
             workflowRepository.save(transfer);
+            transferTerminalEventOutbox.recordIfAbsent(TransferFailedEvent.fromReservationRejected(
+                    transfer, event.eventId(), event.reason(), java.time.Instant.now()));
         }
         eventInbox.recordProcessed(event);
     }
 
     private void applyReservationReleased(Transfer transfer, WorkflowEventRecord event) {
+        var waitingForRelease = transfer.status() == TransferStatus.AWAITING_RESERVATION_RELEASE;
         var changed = transfer.accountReservationReleased(
                 event.reservationRequestId(), event.reservationId(), event.correlationId());
         if (changed) {
             workflowRepository.save(transfer);
+            if (waitingForRelease) {
+                var ledgerFailure = eventInbox.findLatestByTransferIdAndEventType(
+                        transfer.id(), EventType.LEDGER_POSTING_FAILED);
+                transferTerminalEventOutbox.recordIfAbsent(TransferFailedEvent.fromCompensatedLedgerFailure(
+                        transfer,
+                        event.eventId(),
+                        ledgerFailure.map(WorkflowEventRecord::reason)
+                                .orElse("Ledger Service rejected the posting request."),
+                        java.time.Instant.now()));
+            }
         }
         eventInbox.recordProcessed(event);
     }
@@ -261,6 +297,8 @@ public class TransferProcessManager {
                 event.reservationRequestId(), event.reservationId(), event.correlationId());
         if (changed) {
             workflowRepository.save(transfer);
+            transferTerminalEventOutbox.recordIfAbsent(TransferFailedEvent.fromReservationExpired(
+                    transfer, event.eventId(), java.time.Instant.now()));
         }
         eventInbox.recordProcessed(event);
     }
@@ -270,6 +308,8 @@ public class TransferProcessManager {
         var changed = transfer.ledgerPostingCompleted(event.postingRequestId(), event.correlationId());
         if (changed) {
             workflowRepository.save(transfer);
+            transferTerminalEventOutbox.recordIfAbsent(TransferCompletedEvent.from(
+                    transfer, event.eventId(), event.postingId(), java.time.Instant.now()));
         }
         eventInbox.recordProcessed(event);
     }
@@ -554,5 +594,24 @@ public class TransferProcessManager {
         @Override
         public void markFailed(com.digitalbank.transactionservice.application.port.out.LedgerCommandEvent event,
                 UUID claimToken, String error, java.time.Instant retryAt) {}
+    }
+
+    private static final class NoOpTransferTerminalEventOutbox implements TransferTerminalEventOutbox {
+        @Override
+        public boolean recordIfAbsent(TransferTerminalEvent event) {
+            return false;
+        }
+
+        @Override
+        public List<TransferTerminalEvent> claimReady(
+                int limit, java.time.Instant now, UUID claimToken, java.time.Instant leaseUntil) {
+            return List.of();
+        }
+
+        @Override
+        public void markPublished(TransferTerminalEvent event, UUID claimToken, java.time.Instant publishedAt) {}
+
+        @Override
+        public void markFailed(TransferTerminalEvent event, UUID claimToken, String error, java.time.Instant retryAt) {}
     }
 }
