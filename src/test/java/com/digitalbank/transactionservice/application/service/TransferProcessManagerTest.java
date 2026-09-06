@@ -406,7 +406,7 @@ class TransferProcessManagerTest {
     }
 
     @Test
-    void ledgerFailureWaitsForReleaseFactAfterRecordingReleaseAction() {
+    void ledgerFailureWaitsForAccountOwnedReleaseFactWithoutRecordingReleaseAction() {
         reserve();
 
         var result = processManager.handle(new LedgerPostingFailed(
@@ -418,8 +418,7 @@ class TransferProcessManagerTest {
                 "unbalanced posting"));
 
         assertThat(result.transfer().status()).isEqualTo(TransferStatus.AWAITING_RESERVATION_RELEASE);
-        assertThat(result.actions()).hasSize(1);
-        assertThat(result.actions().getFirst().actionId()).isEqualTo("release-reservation:reservation-001");
+        assertThat(result.actions()).isEmpty();
     }
 
     @Test

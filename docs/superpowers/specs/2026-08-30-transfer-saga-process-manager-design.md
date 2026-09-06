@@ -19,8 +19,10 @@ The process manager supports these application messages:
    release for a reservation that does not exist.
 4. `LedgerPostingCompleted`: advances a transfer awaiting posting to
    `COMPLETED`.
-5. `LedgerPostingFailed`: fails a transfer awaiting posting and records an
-   explicit account-reservation release action.
+5. `LedgerPostingFailed`: moves a transfer awaiting posting to
+   `AWAITING_RESERVATION_RELEASE` and waits for Account Service's release fact.
+6. `AccountReservationReleased`: completes the compensation and fails the
+   transfer after Account Service releases the reservation.
 
 The existing `COMPLETED -> REVERSED` lifecycle remains domain behavior, but
 reversal orchestration is outside this slice. No HTTP controller, Kafka
@@ -39,7 +41,8 @@ an optimistic-lock version.
 | `PENDING` | `AccountReservationCreated` | `AWAITING_LEDGER_POSTING` | request ledger posting |
 | `PENDING` | `AccountReservationRejected` | `FAILED` | none |
 | `AWAITING_LEDGER_POSTING` | `LedgerPostingCompleted` | `COMPLETED` | none |
-| `AWAITING_LEDGER_POSTING` | `LedgerPostingFailed` | `FAILED` | release account reservation |
+| `AWAITING_LEDGER_POSTING` | `LedgerPostingFailed` | `AWAITING_RESERVATION_RELEASE` | wait for Account Service release fact |
+| `AWAITING_RESERVATION_RELEASE` | `AccountReservationReleased` | `FAILED` | none |
 | `COMPLETED` | reversal command | `REVERSED` | outside this slice |
 
 Repeated handling of the same semantic event is a no-op. An event with a

@@ -37,9 +37,12 @@ coordination slice:
 2. `AccountReservationCreated` advances the workflow to
    `AWAITING_LEDGER_POSTING` and records a ledger-posting request.
 3. `LedgerPostingCompleted` marks the transfer `COMPLETED`.
-4. `LedgerPostingFailed` marks it `FAILED` and records an explicit reservation
-   release action.
-5. `AccountReservationRejected` marks a pending transfer `FAILED`.
+4. `LedgerPostingFailed` moves an accepted transfer to
+   `AWAITING_RESERVATION_RELEASE` and waits for Account Service to release the
+   reservation.
+5. `AccountReservationReleased` completes that compensation and marks the
+   transfer `FAILED`.
+6. `AccountReservationRejected` marks a pending transfer `FAILED`.
 
 Before the reservation action is recorded, Transaction Service evaluates a
 transfer risk decision bound to the transfer intent. The configured evaluator

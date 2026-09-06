@@ -278,8 +278,6 @@ public class TransferProcessManager {
         var changed = transfer.ledgerPostingFailed(event.postingRequestId(), event.correlationId());
         if (changed) {
             workflowRepository.save(transfer);
-            addAction(actions, transfer, ReleaseAccountReservation.forTransfer(
-                    transfer.id(), transfer.correlationId(), transfer.reservationId()));
         }
         eventInbox.recordProcessed(event);
     }
