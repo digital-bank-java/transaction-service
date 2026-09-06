@@ -89,7 +89,9 @@ public record WorkflowEventRecord(
         return new WorkflowEventRecord(
                 event.eventId(), event.transferId(), EventType.ACCOUNT_RESERVATION_ACCEPTED,
                 event.correlationId(), event.reservationRequestId(), event.reservationRequestId(),
-                event.reservationId(), null, null, EventStatus.PROCESSED);
+                event.reservationId(), null, null, EventStatus.PROCESSED, null, null, null, null, null,
+                event.sourceAccountId(), event.destinationAccountId(), event.amount(), event.currency(), null,
+                event.expiresAt(), null);
     }
 
     public static WorkflowEventRecord from(AccountReservationRejected event) {

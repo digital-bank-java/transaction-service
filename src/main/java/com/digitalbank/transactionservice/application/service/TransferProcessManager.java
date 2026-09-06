@@ -152,7 +152,8 @@ public class TransferProcessManager {
 
     @Transactional
     public WorkflowResult handle(AccountReservationAccepted event) {
-        return handle(WorkflowEventRecord.from(event));
+        var record = WorkflowEventRecord.from(event);
+        return handle(record, transfer -> requireReservationAcceptedMatches(transfer, record));
     }
 
     @Transactional
@@ -339,6 +340,14 @@ public class TransferProcessManager {
         requireLedgerValue(transfer.sourceAccountId(), event.sourceAccountId(), "debit accountId");
         requireLedgerValue(transfer.destinationAccountId(), event.destinationAccountId(), "credit accountId");
         requireLedgerAmount(transfer.amount(), event.amount(), "ledger amount");
+    }
+
+    private static void requireReservationAcceptedMatches(Transfer transfer, WorkflowEventRecord event) {
+        requireLedgerValue(transfer.sourceAccountId(), event.sourceAccountId(), "reservation source accountId");
+        requireLedgerValue(
+                transfer.destinationAccountId(), event.destinationAccountId(), "reservation destination accountId");
+        requireLedgerAmount(transfer.amount(), event.amount(), "reservation amount");
+        requireMatch(transfer.currency(), event.currency(), "reservation currency");
     }
 
     private static void requireLedgerLine(

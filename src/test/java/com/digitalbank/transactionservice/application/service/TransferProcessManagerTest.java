@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.digitalbank.transactionservice.application.port.in.AccountReservationCreated;
+import com.digitalbank.transactionservice.application.port.in.AccountReservationAccepted;
 import com.digitalbank.transactionservice.application.port.in.AccountReservationExpired;
 import com.digitalbank.transactionservice.application.port.in.AccountReservationRejected;
 import com.digitalbank.transactionservice.application.port.in.AccountReservationReleased;
@@ -231,6 +232,61 @@ class TransferProcessManagerTest {
             assertThat(event.reservationRequestId()).isEqualTo(RESERVATION_REQUEST_ID);
             assertThat(event.reservationId()).isEqualTo("reservation-001");
         });
+    }
+
+    @Test
+    void reservationAcceptedWithMismatchedDetailsIsRejectedBeforeLedgerPosting() {
+        processManager.requestTransfer(command());
+
+        assertThatThrownBy(() -> processManager.handle(new AccountReservationAccepted(
+                TRANSFER_ID,
+                "event-reservation-mismatched-details",
+                CORRELATION_ID,
+                RESERVATION_REQUEST_ID,
+                "reservation-001",
+                SOURCE_ACCOUNT_ID,
+                DESTINATION_ACCOUNT_ID,
+                new BigDecimal("12.51"),
+                "AED",
+                Instant.now().plusSeconds(300))))
+                .isInstanceOf(TransferConflictException.class);
+        assertThat(workflows.findById(TRANSFER_ID).orElseThrow().status()).isEqualTo(TransferStatus.PENDING);
+        assertThat(events.eventIds()).doesNotContain("event-reservation-mismatched-details");
+        assertThat(ledgerOutbox.events()).isEmpty();
+    }
+
+    @Test
+    void reservationAcceptedReplayWithChangedPayloadIsRejected() {
+        processManager.requestTransfer(command());
+        var firstExpiry = Instant.now().plusSeconds(300);
+        var first = new AccountReservationAccepted(
+                TRANSFER_ID,
+                "event-reservation-replay-conflict",
+                CORRELATION_ID,
+                RESERVATION_REQUEST_ID,
+                "reservation-001",
+                SOURCE_ACCOUNT_ID,
+                DESTINATION_ACCOUNT_ID,
+                new BigDecimal("12.50"),
+                "AED",
+                firstExpiry);
+        processManager.handle(first);
+
+        assertThatThrownBy(() -> processManager.handle(new AccountReservationAccepted(
+                TRANSFER_ID,
+                first.eventId(),
+                CORRELATION_ID,
+                RESERVATION_REQUEST_ID,
+                "reservation-001",
+                SOURCE_ACCOUNT_ID,
+                DESTINATION_ACCOUNT_ID,
+                new BigDecimal("12.50"),
+                "AED",
+                firstExpiry.plusSeconds(1))))
+                .isInstanceOf(TransferConflictException.class)
+                .hasMessageContaining("eventId");
+        assertThat(workflows.findById(TRANSFER_ID).orElseThrow().status())
+                .isEqualTo(TransferStatus.AWAITING_LEDGER_POSTING);
     }
 
     @Test
