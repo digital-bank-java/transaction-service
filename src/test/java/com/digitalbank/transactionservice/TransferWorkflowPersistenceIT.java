@@ -143,7 +143,17 @@ class TransferWorkflowPersistenceIT {
     void persistsDeferredEventAndReplaysItAfterReservation() {
         processManager.requestTransfer(command());
         processManager.handle(new LedgerPostingCompleted(
-                transferId, "persisted-ledger-event", correlationId, "ledger-event-request", postingRequestId));
+                transferId,
+                "persisted-ledger-event",
+                correlationId,
+                "ledger-event-request",
+                UUID.randomUUID().toString(),
+                postingRequestId,
+                reservationRequestId,
+                "AED",
+                List.of(
+                        new LedgerPostingCompleted.Line(sourceAccountId, "DEBIT", new BigDecimal("17.25")),
+                        new LedgerPostingCompleted.Line(destinationAccountId, "CREDIT", new BigDecimal("17.25")))));
 
         assertThat(eventInbox.findDeferredByTransferId(transferId)).hasSize(1);
 
