@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -28,7 +29,7 @@ class KafkaTransferCreatedEventPublisher {
     private final String topic;
 
     KafkaTransferCreatedEventPublisher(
-            KafkaTemplate<String, String> kafkaTemplate,
+            @Qualifier("ledgerKafkaTemplate") KafkaTemplate<String, String> kafkaTemplate,
             TransferCreatedEventOutbox outbox,
             ObjectMapper objectMapper,
             org.springframework.core.env.Environment environment) {
