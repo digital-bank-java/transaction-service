@@ -56,6 +56,21 @@ class LedgerEventValidatorTest {
                 .hasMessageContaining("correlation-id");
     }
 
+    @Test
+    void acceptsEquivalentOccurredAtPrecision() throws Exception {
+        var headers = headers();
+        var payload = completedPayloadJson().replace(
+                "2026-08-31T10:15:31Z", "2026-08-31T10:15:31.123456586Z");
+        headers.remove("occurred-at");
+        headers.add("occurred-at", "2026-08-31T10:15:31.123457Z".getBytes(StandardCharsets.UTF_8));
+
+        assertThatCode(() -> LedgerEventHeaderValidator.validate(
+                record("ledger.posting.completed.v1", headers, payload),
+                objectMapper.readTree(payload),
+                "LedgerPostingCompleted.v1",
+                "ledger-service")).doesNotThrowAnyException();
+    }
+
     private ConsumerRecord<String, String> record(String topic, RecordHeaders headers, String payloadJson) {
         return new ConsumerRecord<>(topic, 0, 0L, 0L, null, 0, 0,
                 "posting-request-001", payloadJson, headers, Optional.empty());
