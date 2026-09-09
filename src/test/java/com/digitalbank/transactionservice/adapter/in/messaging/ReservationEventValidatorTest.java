@@ -53,9 +53,9 @@ class ReservationEventValidatorTest {
     void acceptsEquivalentOccurredAtPrecision() throws Exception {
         var headers = headers();
         headers.remove("occurred-at");
-        headers.add("occurred-at", "2026-08-31T10:15:31.000000Z".getBytes(StandardCharsets.UTF_8));
+        headers.add("occurred-at", "2026-08-31T10:15:31.123456Z".getBytes(StandardCharsets.UTF_8));
         var payload = objectMapper.readTree(payloadJson().replace(
-                "2026-08-31T10:15:31Z", "2026-08-31T10:15:31.000000000Z"));
+                "2026-08-31T10:15:31Z", "2026-08-31T10:15:31.123456463Z"));
 
         assertThatCode(() -> ReservationEventHeaderValidator.validate(
                         record(headers), payload, "AccountReservationAccepted.v1", "account-service"))
