@@ -49,6 +49,19 @@ class ReservationEventValidatorTest {
                 .hasMessageContaining("correlation-id");
     }
 
+    @Test
+    void acceptsEquivalentOccurredAtPrecision() throws Exception {
+        var headers = headers();
+        headers.remove("occurred-at");
+        headers.add("occurred-at", "2026-08-31T10:15:31.123456Z".getBytes(StandardCharsets.UTF_8));
+        var payload = objectMapper.readTree(payloadJson().replace(
+                "2026-08-31T10:15:31Z", "2026-08-31T10:15:31.123456463Z"));
+
+        assertThatCode(() -> ReservationEventHeaderValidator.validate(
+                        record(headers), payload, "AccountReservationAccepted.v1", "account-service"))
+                .doesNotThrowAnyException();
+    }
+
     private ConsumerRecord<String, String> record(RecordHeaders headers) {
         return new ConsumerRecord<>("account.reservation.accepted.v1", 0, 0L, 0L, null, 0, 0,
                 "source-account", payloadJson(), headers, java.util.Optional.empty());

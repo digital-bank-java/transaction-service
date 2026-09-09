@@ -3,6 +3,7 @@ package com.digitalbank.transactionservice.adapter.in.messaging;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -38,7 +39,7 @@ final class ReservationEventHeaderValidator {
                 default -> throw new IllegalStateException("Unsupported header: " + headerName);
             };
             var payloadValue = requiredText(payload, payloadField);
-            if (!headerValue.equals(payloadValue)) {
+            if (!headersRepresentSameValue(headerName, headerValue, payloadValue)) {
                 throw new IllegalArgumentException("Kafka header does not match payload: " + headerName);
             }
         }
@@ -62,6 +63,14 @@ final class ReservationEventHeaderValidator {
         if (!expectedProducer.equals(requiredText(payload, "producer"))) {
             throw new IllegalArgumentException("Unexpected reservation event producer");
         }
+    }
+
+    private static boolean headersRepresentSameValue(String headerName, String headerValue, String payloadValue) {
+        if (!"occurred-at".equals(headerName)) {
+            return headerValue.equals(payloadValue);
+        }
+        return parseInstant(headerValue, "occurred-at header").truncatedTo(ChronoUnit.MICROS)
+                .equals(parseInstant(payloadValue, "occurredAt").truncatedTo(ChronoUnit.MICROS));
     }
 
     private static String requiredText(JsonNode payload, String field) {
