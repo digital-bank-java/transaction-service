@@ -1,9 +1,9 @@
 package com.digitalbank.transactionservice.adapter.in.messaging;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -12,6 +12,7 @@ final class ReservationEventHeaderValidator {
 
     private static final List<String> REQUIRED_HEADERS = List.of(
             "event-id", "correlation-id", "causation-id", "producer", "schema-version", "occurred-at");
+    private static final Duration MAX_OCCURRED_AT_DRIFT = Duration.ofNanos(1_000);
 
     private ReservationEventHeaderValidator() {}
 
@@ -69,8 +70,9 @@ final class ReservationEventHeaderValidator {
         if (!"occurred-at".equals(headerName)) {
             return headerValue.equals(payloadValue);
         }
-        return parseInstant(headerValue, "occurred-at header").truncatedTo(ChronoUnit.MICROS)
-                .equals(parseInstant(payloadValue, "occurredAt").truncatedTo(ChronoUnit.MICROS));
+        var headerInstant = parseInstant(headerValue, "occurred-at header");
+        var payloadInstant = parseInstant(payloadValue, "occurredAt");
+        return Duration.between(headerInstant, payloadInstant).abs().compareTo(MAX_OCCURRED_AT_DRIFT) <= 0;
     }
 
     private static String requiredText(JsonNode payload, String field) {
