@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.Duration;
 import java.time.format.DateTimeParseException;
 import java.util.UUID;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -15,6 +16,7 @@ final class MfaAssuranceEventPayloads {
     private static final String EVENT_TYPE = "MfaAssuranceGranted.v1";
     private static final String PRODUCER = "mfa-service";
     private static final String SCHEMA_VERSION = "1.0.0";
+    private static final Duration MAX_OCCURRED_AT_PRECISION_DRIFT = Duration.ofNanos(1_000);
 
     private MfaAssuranceEventPayloads() {}
 
@@ -63,7 +65,10 @@ final class MfaAssuranceEventPayloads {
                 default -> throw new IllegalStateException("Unsupported header: " + headerName);
             };
             var value = new String(header.value(), java.nio.charset.StandardCharsets.UTF_8);
-            if (!value.equals(text(payload, expected))) {
+            var matches = "occurredAt".equals(expected)
+                    ? withinPrecision(instantValue(value, headerName), instant(payload, expected))
+                    : value.equals(text(payload, expected));
+            if (!matches) {
                 throw new MfaAssuranceEventValidationException("Kafka header does not match payload: " + headerName);
             }
         }
@@ -109,6 +114,18 @@ final class MfaAssuranceEventPayloads {
         } catch (DateTimeParseException exception) {
             throw new MfaAssuranceEventValidationException(field + " must be an instant", exception);
         }
+    }
+
+    private static Instant instantValue(String value, String field) {
+        try {
+            return Instant.parse(value);
+        } catch (DateTimeParseException exception) {
+            throw new MfaAssuranceEventValidationException(field + " must be an instant", exception);
+        }
+    }
+
+    private static boolean withinPrecision(Instant headerValue, Instant payloadValue) {
+        return Duration.between(headerValue, payloadValue).abs().compareTo(MAX_OCCURRED_AT_PRECISION_DRIFT) <= 0;
     }
 
     private static BigDecimal decimal(JsonNode payload, String field) {

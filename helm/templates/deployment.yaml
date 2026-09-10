@@ -82,6 +82,18 @@ spec:
               value: {{ .Values.ledgerEvents.completedTopic | quote }}
             - name: LEDGER_POSTING_FAILED_TOPIC
               value: {{ .Values.ledgerEvents.failedTopic | quote }}
+            - name: TRANSACTION_EVENTS_MFA_ASSURANCE_ENABLED
+              value: {{ .Values.mfaAssuranceEvents.enabled | quote }}
+            - name: TRANSACTION_EVENTS_MFA_ASSURANCE_SIT_PLAINTEXT_ENABLED
+              value: {{ .Values.mfaAssuranceEvents.sitPlaintextEnabled | quote }}
+            - name: TRANSACTION_EVENTS_MFA_ASSURANCE_KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.mfaAssuranceEvents.bootstrapServers | quote }}
+            - name: TRANSACTION_EVENTS_MFA_ASSURANCE_KAFKA_SECURITY_PROTOCOL
+              value: {{ .Values.mfaAssuranceEvents.securityProtocol | quote }}
+            - name: MFA_ASSURANCE_GRANTED_TOPIC
+              value: {{ .Values.mfaAssuranceEvents.topic | quote }}
+            - name: MFA_ASSURANCE_CONSUMER_GROUP_ID
+              value: {{ .Values.mfaAssuranceEvents.consumerGroupId | quote }}
           securityContext:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
           ports:
