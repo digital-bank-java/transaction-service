@@ -63,7 +63,10 @@ final class MfaAssuranceEventPayloads {
                 default -> throw new IllegalStateException("Unsupported header: " + headerName);
             };
             var value = new String(header.value(), java.nio.charset.StandardCharsets.UTF_8);
-            if (!value.equals(text(payload, expected))) {
+            var matches = "occurredAt".equals(expected)
+                    ? instantValue(value, headerName).equals(instant(payload, expected))
+                    : value.equals(text(payload, expected));
+            if (!matches) {
                 throw new MfaAssuranceEventValidationException("Kafka header does not match payload: " + headerName);
             }
         }
@@ -106,6 +109,14 @@ final class MfaAssuranceEventPayloads {
     private static Instant instant(JsonNode payload, String field) {
         try {
             return Instant.parse(text(payload, field));
+        } catch (DateTimeParseException exception) {
+            throw new MfaAssuranceEventValidationException(field + " must be an instant", exception);
+        }
+    }
+
+    private static Instant instantValue(String value, String field) {
+        try {
+            return Instant.parse(value);
         } catch (DateTimeParseException exception) {
             throw new MfaAssuranceEventValidationException(field + " must be an instant", exception);
         }
