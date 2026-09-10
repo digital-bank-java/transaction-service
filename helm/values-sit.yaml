@@ -17,3 +17,9 @@ reservationEvents:
 ledgerEvents:
   enabled: true
   sitPlaintextEnabled: true
+
+mfaAssuranceEvents:
+  enabled: true
+  sitPlaintextEnabled: true
+  bootstrapServers: kafka.digital-bank-sit.svc.cluster.local:9092
+  securityProtocol: PLAINTEXT

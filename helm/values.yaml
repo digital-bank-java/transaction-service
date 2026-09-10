@@ -47,6 +47,14 @@ ledgerEvents:
   completedTopic: ledger.posting.completed.v1
   failedTopic: ledger.posting.failed.v1
 
+mfaAssuranceEvents:
+  enabled: false
+  sitPlaintextEnabled: false
+  bootstrapServers: ""
+  securityProtocol: SASL_SSL
+  topic: mfa.assurance.granted.v1
+  consumerGroupId: transaction-service-mfa-assurance
+
 service:
   type: ClusterIP
   port: 8084
