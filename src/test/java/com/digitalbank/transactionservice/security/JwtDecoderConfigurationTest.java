@@ -28,7 +28,9 @@ class JwtDecoderConfigurationTest {
         String jwtSecret = Base64.getEncoder().encodeToString(new byte[secretLength]);
         var environment = new MockEnvironment()
                 .withProperty("auth.jwt.secret", jwtSecret)
-                .withProperty("auth.jwt.issuer", JWT_ISSUER);
+                .withProperty("auth.jwt.issuer", JWT_ISSUER)
+                .withProperty("auth.jwt.audience", "transaction-service")
+                .withProperty("auth.jwt.token-purpose", "user-access");
         var decoder = new JwtDecoderConfiguration().jwtDecoder(environment);
         var now = Instant.now();
         var signingKey = new OctetSequenceKey.Builder(Base64.getDecoder().decode(jwtSecret))
@@ -43,6 +45,8 @@ class JwtDecoderConfigurationTest {
                         .subject("transfer-orchestrator")
                         .issuedAt(now.minusSeconds(1))
                         .expiresAt(now.plusSeconds(60))
+                        .audience(java.util.List.of("transaction-service"))
+                        .claim("token_purpose", "user-access")
                         .claim("scope", "transfer.internal")
                         .build()))
                 .getTokenValue();
