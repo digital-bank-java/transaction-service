@@ -14,6 +14,7 @@ import com.digitalbank.transactionservice.application.port.in.MfaAssuranceGrante
 import com.digitalbank.transactionservice.application.port.in.RequestTransferCommand;
 import com.digitalbank.transactionservice.application.port.out.ReservationCommandEvent;
 import com.digitalbank.transactionservice.application.port.out.ReservationCommandEventOutbox;
+import com.digitalbank.transactionservice.application.port.out.AccountReservationReleaseRequestedEvent;
 import com.digitalbank.transactionservice.application.port.out.TransferCreatedEvent;
 import com.digitalbank.transactionservice.application.port.out.TransferCreatedEventOutbox;
 import com.digitalbank.transactionservice.application.port.out.TransferTerminalEvent;
@@ -59,6 +60,7 @@ class TransferProcessManagerTest {
     private InMemoryEventInbox events;
     private InMemoryActionRepository actions;
     private InMemoryTransferCreatedEventOutbox outbox;
+    private InMemoryReservationCommandEventOutbox reservationOutbox;
     private InMemoryLedgerCommandEventOutbox ledgerOutbox;
     private InMemoryTransferTerminalEventOutbox terminalOutbox;
     private TransferProcessManager processManager;
@@ -69,10 +71,11 @@ class TransferProcessManagerTest {
         events = new InMemoryEventInbox();
         actions = new InMemoryActionRepository();
         outbox = new InMemoryTransferCreatedEventOutbox();
+        reservationOutbox = new InMemoryReservationCommandEventOutbox();
         ledgerOutbox = new InMemoryLedgerCommandEventOutbox();
         terminalOutbox = new InMemoryTransferTerminalEventOutbox();
         processManager = new TransferProcessManager(workflows, events, actions, outbox,
-                new InMemoryReservationCommandEventOutbox(), ledgerOutbox, terminalOutbox,
+                reservationOutbox, ledgerOutbox, terminalOutbox,
                 defaultRiskEvaluator());
     }
 
@@ -429,7 +432,7 @@ class TransferProcessManagerTest {
     }
 
     @Test
-    void ledgerFailureWaitsForAccountOwnedReleaseFactWithoutRecordingReleaseAction() {
+    void ledgerFailureRequestsAccountOwnedReservationRelease() {
         reserve();
 
         var result = processManager.handle(new LedgerPostingFailed(
@@ -441,7 +444,19 @@ class TransferProcessManagerTest {
                 "unbalanced posting"));
 
         assertThat(result.transfer().status()).isEqualTo(TransferStatus.AWAITING_RESERVATION_RELEASE);
-        assertThat(result.actions()).isEmpty();
+        assertThat(result.actions()).singleElement()
+                .extracting(WorkflowAction::actionId)
+                .isEqualTo("release-reservation:reservation-001");
+        assertThat(actions.actions()).extracting(WorkflowAction::actionId)
+                .contains("release-reservation:reservation-001");
+        assertThat(reservationOutbox.events())
+                .filteredOn(event -> event instanceof AccountReservationReleaseRequestedEvent)
+                .singleElement()
+                .isInstanceOfSatisfying(AccountReservationReleaseRequestedEvent.class, event -> {
+                    assertThat(event.eventType()).isEqualTo(AccountReservationReleaseRequestedEvent.EVENT_TYPE);
+                    assertThat(event.reservationId()).isEqualTo("reservation-001");
+                    assertThat(event.reason()).isEqualTo("LEDGER_POSTING_FAILED");
+                });
     }
 
     @Test
@@ -767,9 +782,15 @@ class TransferProcessManagerTest {
     }
 
     private static final class InMemoryReservationCommandEventOutbox implements ReservationCommandEventOutbox {
+        private final List<ReservationCommandEvent> values = new ArrayList<>();
+
         @Override
         public boolean recordIfAbsent(ReservationCommandEvent event) {
-            return false;
+            if (values.stream().anyMatch(existing -> existing.eventId().equals(event.eventId()))) {
+                return false;
+            }
+            values.add(event);
+            return true;
         }
 
         @Override
@@ -782,6 +803,10 @@ class TransferProcessManagerTest {
 
         @Override
         public void markFailed(ReservationCommandEvent event, UUID claimToken, String error, Instant retryAt) {}
+
+        List<ReservationCommandEvent> events() {
+            return values;
+        }
     }
 
     private static final class InMemoryLedgerCommandEventOutbox implements LedgerCommandEventOutbox {
